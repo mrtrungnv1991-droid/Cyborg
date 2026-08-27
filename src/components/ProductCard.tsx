@@ -13,25 +13,45 @@ import { formatCurrency } from '../utils/formatters';
 interface ProductCardProps {
   product: Product;
   currency: 'VND' | 'USD';
-  onJoinPool: (product: Product, pool?: GroupPool) => void;
-  onInstantBuy: (product: Product) => void;
-  onCreateNewPoolForProduct: (product: Product) => void;
+  onJoinPool?: (product: Product, pool?: GroupPool) => void;
+  onOpenPoolModal?: (pool?: GroupPool) => void;
+  onInstantBuy?: (product: Product) => void;
+  onCreatePool?: () => void;
+  onCreateNewPoolForProduct?: (product: Product) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   currency,
   onJoinPool,
+  onOpenPoolModal,
   onInstantBuy,
+  onCreatePool,
   onCreateNewPoolForProduct
 }) => {
-  const activePool = product.activePools.find(p => p.status === 'filling') || product.activePools[0];
+  const activePool = (product.activePools && product.activePools.length > 0)
+    ? (product.activePools.find(p => p.status === 'filling') || product.activePools[0])
+    : undefined;
   const savingsPercent = Math.round(((product.retailPrice - product.groupPrice) / product.retailPrice) * 100);
   
   const filledSlots = activePool ? activePool.filledSlots : 0;
   const targetSlots = activePool ? activePool.targetSlots : product.minSlots;
   const percentFilled = Math.min(100, Math.round((filledSlots / targetSlots) * 100));
   const remainingSlots = targetSlots - filledSlots;
+
+  const handleJoinClick = () => {
+    if (onJoinPool) {
+      onJoinPool(product, activePool);
+    } else if (onOpenPoolModal) {
+      onOpenPoolModal(activePool);
+    }
+  };
+
+  const handleInstantBuyClick = () => {
+    if (onInstantBuy) {
+      onInstantBuy(product);
+    }
+  };
 
   return (
     <div className="group relative rounded-xl bg-[#0e121b] border border-slate-800 hover:border-cyan-500/50 transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-lg hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.25)] h-full">
@@ -166,7 +186,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <div className="grid grid-cols-2 gap-1 sm:gap-2 pt-0.5">
           {/* Group Buy Button (Main) */}
           <button
-            onClick={() => onJoinPool(product, activePool)}
+            onClick={handleJoinClick}
             className="flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1.5 sm:px-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)] active:scale-95 cursor-pointer"
           >
             <span>Gom Đơn</span>
@@ -175,7 +195,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
           {/* Instant Buy Retail Button */}
           <button
-            onClick={() => onInstantBuy(product)}
+            onClick={handleInstantBuyClick}
             className="flex items-center justify-center gap-0.5 py-1.5 sm:py-2 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-mono text-[9px] sm:text-xs border border-slate-700 transition-all active:scale-95 cursor-pointer truncate"
           >
             <span>Mua Lẻ</span>

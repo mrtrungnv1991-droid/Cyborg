@@ -24,9 +24,10 @@ interface ActivePoolsShowcaseProps {
   products: Product[];
   currency: CurrencyCode;
   language?: LanguageCode;
-  onJoinPool: (product: Product, pool?: GroupPool) => void;
-  onInstantBuy: (product: Product) => void;
-  onCreateNewPool: (product?: Product) => void;
+  onJoinPool?: (product: Product, pool?: GroupPool) => void;
+  onOpenPool?: (product: Product, pool?: GroupPool) => void;
+  onInstantBuy?: (product: Product) => void;
+  onCreateNewPool?: (product?: Product) => void;
 }
 
 export const ActivePoolsShowcase: React.FC<ActivePoolsShowcaseProps> = ({
@@ -34,9 +35,11 @@ export const ActivePoolsShowcase: React.FC<ActivePoolsShowcaseProps> = ({
   currency,
   language = 'vi',
   onJoinPool,
+  onOpenPool,
   onInstantBuy,
   onCreateNewPool
 }) => {
+  const handleJoin = onJoinPool || onOpenPool;
   const [viewMode, setViewMode] = useState<'carousel' | 'grid'>('grid');
   const [filterType, setFilterType] = useState<'all' | 'almost_full' | 'hot' | 'ai' | 'gaming' | 'giftup'>('all');
   
@@ -302,8 +305,7 @@ export const ActivePoolsShowcase: React.FC<ActivePoolsShowcaseProps> = ({
                 <ProductCard
                   product={product}
                   currency={currency}
-                  language={language}
-                  onJoinPool={onJoinPool}
+                  onJoinPool={handleJoin}
                   onInstantBuy={onInstantBuy}
                   onCreateNewPoolForProduct={onCreateNewPool}
                 />
@@ -339,8 +341,7 @@ export const ActivePoolsShowcase: React.FC<ActivePoolsShowcaseProps> = ({
               key={product.id}
               product={product}
               currency={currency}
-              language={language}
-              onJoinPool={onJoinPool}
+              onJoinPool={handleJoin}
               onInstantBuy={onInstantBuy}
               onCreateNewPoolForProduct={onCreateNewPool}
             />

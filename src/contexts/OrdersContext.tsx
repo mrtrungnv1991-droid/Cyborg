@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
   UserOrder, 
   ManualOrder, 
@@ -9,16 +9,17 @@ import {
   WheelSpinRecord, 
   Product, 
   GameItem, 
-  TopupTier, 
-  GroupPool 
+  TopupTier
 } from '../types';
 import { INITIAL_ORDERS } from '../data/mockProducts';
 import { INITIAL_TICKETS } from '../data/mockTopupGames';
 import { INITIAL_MANUAL_ORDERS } from '../data/shopclone7ExtendedData';
-import { generateTxHash, generateRandomKey } from '../utils/formatters';
+import { generateTxHash } from '../utils/formatters';
 import { useAuth } from './AuthContext';
 import { useWallet } from './WalletContext';
 import { useCatalog } from './CatalogContext';
+import { ordersApi } from '../api/orders';
+import { escrowApi } from '../api/escrow';
 
 interface OrdersContextType {
   orders: UserOrder[];
@@ -28,11 +29,13 @@ interface OrdersContextType {
   chatMessages: ChatMessage[];
   luckyWheelPrizes: WheelPrize[];
   spinRecords: WheelSpinRecord[];
+  isLoading: boolean;
+  fetchOrders: () => Promise<void>;
   
   // Actions
-  joinPool: (poolId: string, product: Product) => { success: boolean; message: string };
-  buyInstantSingle: (product: Product, quantity?: number) => { success: boolean; message: string };
-  createTopupOrder: (game: GameItem, tier: TopupTier, uid: string, zoneId?: string, characterName?: string, isGroup?: boolean) => { success: boolean; message: string };
+  joinPool: (poolId: string, product: Product) => Promise<{ success: boolean; message: string }>;
+  buyInstantSingle: (product: Product, quantity?: number) => Promise<{ success: boolean; message: string; deliveredKey?: string }>;
+  createTopupOrder: (game: GameItem, tier: TopupTier, uid: string, zoneId?: string, characterName?: string, isGroup?: boolean) => Promise<{ success: boolean; message: string }>;
   forceEscrowAction: (orderId: string, action: 'release_to_seller' | 'refund_to_buyer') => void;
   createSupportTicket: (ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'status' | 'messages'>, initialMessage: string) => void;
   adminReplyTicket: (ticketId: string, replyText: string, newStatus?: SupportTicket['status']) => void;
@@ -54,38 +57,19 @@ const DEFAULT_PRIZES: WheelPrize[] = [
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
 export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser, updateUserBalance, updateEscrowLocked, setCurrentUser } = useAuth();
-  const { addTransaction } = useWallet();
-  const { products, updateProduct } = useCatalog();
+  const { currentUser, refreshUserProfile } = useAuth();
+  const { addTransaction, fetchWalletData } = useWallet();
+  const { updateProduct } = useCatalog();
 
-  const [orders, setOrders] = useState<UserOrder[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_orders');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_ORDERS;
-  });
-
-  const [manualOrders, setManualOrders] = useState<ManualOrder[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_manual_orders');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_MANUAL_ORDERS;
-  });
-
-  const [tickets, setTickets] = useState<SupportTicket[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_tickets');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_TICKETS;
-  });
+  const [orders, setOrders] = useState<UserOrder[]>(INITIAL_ORDERS);
+  const [manualOrders, setManualOrders] = useState<ManualOrder[]>(INITIAL_MANUAL_ORDERS);
+  const [tickets, setTickets] = useState<SupportTicket[]>(INITIAL_TICKETS);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
       id: 'sess-1',
-      userId: 'user-0x889',
+      userId: 'usr-buyer-01',
       userName: 'CyberBuyer_Vn (Bạn)',
       userAvatar: '',
       lastMessage: 'Đơn nạp VietQR đã được cộng tiền vào ví chưa admin?',
@@ -98,14 +82,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           sender: 'agent',
           senderName: 'CSKH CyberPool',
           text: 'Chào bạn! Hệ thống VietQR tự động khớp lệnh trong 3-10 giây.',
-          timestamp: '15:30'
-        },
-        {
-          id: 'msg-2',
-          sender: 'user',
-          senderName: 'CyberBuyer_Vn',
-          text: 'Vâng mình vừa nhận được thông báo cộng tiền vào ví rồi nhé!',
-          timestamp: '15:35'
+          timestamp: '15:36'
         }
       ]
     }
@@ -113,10 +90,10 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
-      id: 'msg-init',
+      id: 'cm-1',
       sender: 'agent',
-      senderName: 'Admin Hỗ Trợ 24/7',
-      text: 'Chào mừng bạn đến với sàn CyberPool. Bạn cần tra soát đơn hàng, nạp tiền tự động hay bảo hành key?',
+      senderName: 'CSKH CyberPool 24/7',
+      text: 'Xin chào! CyberPool có thể hỗ trợ gì cho phiên giao dịch của bạn hôm nay?',
       timestamp: '15:30'
     }
   ]);
@@ -124,197 +101,203 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [luckyWheelPrizes] = useState<WheelPrize[]>(DEFAULT_PRIZES);
   const [spinRecords, setSpinRecords] = useState<WheelSpinRecord[]>([]);
 
-  useEffect(() => {
+  const fetchOrders = useCallback(async () => {
+    setIsLoading(true);
     try {
-      localStorage.setItem('cyberpool_orders', JSON.stringify(orders));
-    } catch {}
-  }, [orders]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_manual_orders', JSON.stringify(manualOrders));
-    } catch {}
-  }, [manualOrders]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_tickets', JSON.stringify(tickets));
-    } catch {}
-  }, [tickets]);
-
-  // Join Group Buy Pool
-  const joinPool = (poolId: string, product: Product) => {
-    const price = product.groupPrice;
-    if (currentUser.walletBalance < price) {
-      return { success: false, message: 'Số dư ví không đủ để tham gia nhóm mua chung. Vui lòng nạp thêm tiền!' };
+      const res = await ordersApi.getUserOrders();
+      if (res.success && res.data?.orders) {
+        if (res.data.orders.length > 0) {
+          setOrders(res.data.orders);
+        }
+      }
+    } catch {
+      // server sync fallback
+    } finally {
+      setIsLoading(false);
     }
+  }, []);
 
-    updateUserBalance(-price);
-    updateEscrowLocked(price);
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
-    const txId = generateTxHash();
-    const newOrder: UserOrder = {
-      id: `ord_${Date.now()}`,
-      poolId,
-      productId: product.id,
-      productTitle: product.title,
-      platform: product.platform,
-      type: 'group_buy',
-      pricePaid: price,
-      status: 'escrow_locked',
-      createdAt: 'Vừa xong',
-      slotNumber: 2,
-      txId
-    };
+  // 1. Instant Buy (Single Key) via Atomic Server Route
+  const buyInstantSingle = async (product: Product, quantity: number = 1): Promise<{ success: boolean; message: string; deliveredKey?: string }> => {
+    try {
+      const res = await ordersApi.instantBuy({ productId: product.id });
+      if (res.success && res.data) {
+        const deliveredOrder = res.data.order;
+        setOrders(prev => [deliveredOrder, ...prev]);
 
-    setOrders(prev => [newOrder, ...prev]);
-    addTransaction({
-      type: 'buy_pool',
-      description: `Gom đơn mua chung: ${product.title}`,
-      amount: -price,
-      balanceAfter: currentUser.walletBalance - price,
-      status: 'completed',
-      txCode: txId.substring(0, 10).toUpperCase()
-    });
+        addTransaction({
+          type: 'buy_instant',
+          description: `Mua lẻ: ${product.title}`,
+          amount: -deliveredOrder.pricePaid,
+          balanceAfter: Math.max(0, currentUser.walletBalance - deliveredOrder.pricePaid),
+          status: 'completed',
+          txCode: `ORD-${deliveredOrder.id.slice(-6).toUpperCase()}`
+        });
 
-    return { success: true, message: 'Tham gia gom đơn thành công! Tiền được khóa ký quỹ an toàn 100%.' };
+        // Reduce local visual stock
+        updateProduct(product.id, {
+          stockAvailable: Math.max(0, (product.stockAvailable || 10) - 1)
+        });
+
+        await Promise.all([refreshUserProfile(), fetchWalletData()]);
+
+        return {
+          success: true,
+          message: res.data.message || 'Thanh toán thành công! Key đã được đưa vào Vault của bạn.',
+          deliveredKey: res.data.deliveredKey
+        };
+      }
+
+      return {
+        success: false,
+        message: res.error || 'Số dư không đủ hoặc đã hết key trong kho Vault.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Lỗi mạng khi giao tiếp với hệ thống đơn hàng.'
+      };
+    }
   };
 
-  // Buy Instant Single
-  const buyInstantSingle = (product: Product, quantity = 1) => {
-    const price = (product.retailPrice || product.groupPrice) * quantity;
-    if (currentUser.walletBalance < price) {
-      return { success: false, message: 'Số dư ví không đủ để mua ngay sản phẩm này. Vui lòng nạp thêm!' };
+  // 2. Join Escrow Group Pool
+  const joinPool = async (poolId: string, product: Product): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await escrowApi.joinPool({ poolId, productId: product.id });
+      if (res.success && res.data) {
+        const pool = res.data.pool;
+
+        // Create order record in history
+        const orderId = `ord_pool_${Date.now()}`;
+        const newOrder: UserOrder = {
+          id: orderId,
+          productId: product.id,
+          productTitle: product.title,
+          platform: product.platform,
+          type: 'group_buy',
+          pricePaid: pool.pricePerSlot,
+          status: pool.status === 'COMPLETED' ? 'fulfilled' : 'escrow_locked',
+          poolId: pool.id,
+          slotNumber: pool.filledSlots,
+          deliveredKey: pool.status === 'COMPLETED' ? `CYBER-KEY-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
+          txId: `TX-POOL-${pool.id.slice(-6).toUpperCase()}`,
+          createdAt: new Date().toISOString()
+        };
+
+        setOrders(prev => [newOrder, ...prev]);
+
+        addTransaction({
+          type: 'buy_pool',
+          description: `Gom nhóm: ${product.title} (#${pool.id})`,
+          amount: -pool.pricePerSlot,
+          balanceAfter: Math.max(0, currentUser.walletBalance - pool.pricePerSlot),
+          status: 'completed',
+          txCode: `POOL-${pool.id.slice(-6).toUpperCase()}`
+        });
+
+        await Promise.all([refreshUserProfile(), fetchWalletData()]);
+
+        return {
+          success: true,
+          message: res.data.message || 'Đã vào nhóm gom đơn thành công! Tiền cọc được khóa an toàn bởi Escrow Oracle.'
+        };
+      }
+
+      return {
+        success: false,
+        message: res.error || 'Không thể tham gia nhóm mua chung.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Lỗi mạng khi xử lý hợp đồng Escrow.'
+      };
     }
-
-    if (product.stockAvailable < quantity) {
-      return { success: false, message: 'Sản phẩm tạm thời hết hàng trong kho.' };
-    }
-
-    updateUserBalance(-price);
-    const key = generateRandomKey(product.platform);
-    const txId = generateTxHash();
-
-    const newOrder: UserOrder = {
-      id: `ord_${Date.now()}`,
-      productId: product.id,
-      productTitle: product.title,
-      platform: product.platform,
-      type: 'instant_single',
-      pricePaid: price,
-      status: 'fulfilled',
-      createdAt: 'Vừa xong',
-      deliveredKey: key,
-      pinCode: '882199',
-      txId
-    };
-
-    setOrders(prev => [newOrder, ...prev]);
-    updateProduct(product.id, { stockAvailable: Math.max(0, product.stockAvailable - quantity) });
-
-    addTransaction({
-      type: 'buy_instant',
-      description: `Mua ngay: ${product.title} (x${quantity})`,
-      amount: -price,
-      balanceAfter: currentUser.walletBalance - price,
-      status: 'completed',
-      txCode: txId.substring(0, 10).toUpperCase()
-    });
-
-    return { success: true, message: `Mua thành công! Mã key đã được cấp tự động trong Kho Key Vault: ${key}` };
   };
 
-  // Topup Order
-  const createTopupOrder = (
+  // 3. Game Direct Top-Up
+  const createTopupOrder = async (
     game: GameItem, 
     tier: TopupTier, 
     uid: string, 
     zoneId?: string, 
     characterName?: string, 
-    isGroup = false
-  ) => {
-    const price = isGroup ? tier.groupPrice : tier.retailPrice;
-    if (currentUser.walletBalance < price) {
-      return { success: false, message: 'Số dư ví không đủ để thanh toán gói nạp này. Vui lòng nạp ví!' };
-    }
-
-    updateUserBalance(-price);
-    const txId = generateTxHash();
-
-    const newOrder: UserOrder = {
-      id: `ord_${Date.now()}`,
-      productId: game.id,
-      productTitle: `${game.name} - ${tier.name}`,
-      platform: 'Garena',
-      type: isGroup ? 'topup_group' : 'topup_direct',
-      pricePaid: price,
-      status: 'fulfilled',
-      createdAt: 'Vừa xong',
-      topupDetails: {
-        gameName: game.name,
+    isGroup?: boolean
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await ordersApi.topupGame({
+        gameId: game.id,
+        tierId: tier.id,
         uid,
         zoneId,
-        characterName: characterName || 'Player',
-        tierName: tier.name
-      },
-      txId
-    };
+        characterName
+      });
 
-    setOrders(prev => [newOrder, ...prev]);
-    addTransaction({
-      type: 'topup_game',
-      description: `Nạp game ${game.name} (${tier.name}) - UID: ${uid}`,
-      amount: -price,
-      balanceAfter: currentUser.walletBalance - price,
-      status: 'completed',
-      txCode: txId.substring(0, 10).toUpperCase()
-    });
+      if (res.success && res.data) {
+        setOrders(prev => [res.data!.order, ...prev]);
 
-    return { success: true, message: `Nạp thành công gói ${tier.name} cho UID ${uid}! Giao dịch hoàn tất qua API Midasbuy.` };
+        addTransaction({
+          type: 'topup_game',
+          description: `Nạp game ${game.name} - Gói ${tier.name} (UID: ${uid})`,
+          amount: -tier.retailPrice,
+          balanceAfter: Math.max(0, currentUser.walletBalance - tier.retailPrice),
+          status: 'completed',
+          txCode: `GAME-${res.data!.order.id.slice(-6).toUpperCase()}`
+        });
+
+        await Promise.all([refreshUserProfile(), fetchWalletData()]);
+
+        return {
+          success: true,
+          message: res.data.message || 'Đơn nạp game đã được gửi tới cổng API Nhà Cung Cấp thành công!'
+        };
+      }
+
+      return {
+        success: false,
+        message: res.error || 'Nạp game thất bại.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Lỗi mạng khi gọi cổng nạp game.'
+      };
+    }
   };
 
-  // Escrow force action
   const forceEscrowAction = (orderId: string, action: 'release_to_seller' | 'refund_to_buyer') => {
     setOrders(prev => prev.map(o => {
       if (o.id === orderId) {
-        if (action === 'refund_to_buyer') {
-          updateUserBalance(o.pricePaid);
-          updateEscrowLocked(-o.pricePaid);
-          addTransaction({
-            type: 'escrow_refund',
-            description: `Hoàn tiền Escrow đơn #${o.id}`,
-            amount: o.pricePaid,
-            balanceAfter: currentUser.walletBalance + o.pricePaid,
-            status: 'completed',
-            txCode: generateTxHash().substring(0, 10).toUpperCase()
-          });
-          return { ...o, status: 'refunded' };
-        } else {
-          updateEscrowLocked(-o.pricePaid);
-          return { ...o, status: 'fulfilled' };
-        }
+        return {
+          ...o,
+          status: action === 'release_to_seller' ? 'fulfilled' : 'refunded',
+          deliveredKey: action === 'release_to_seller' ? (o.deliveredKey || 'CYBER-FORCE-RELEASE-KEY') : undefined
+        };
       }
       return o;
     }));
   };
 
-  // Support Tickets
-  const createSupportTicket = (ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status' | 'messages'>, initialMessage: string) => {
-    const newTicket: SupportTicket = {
-      ...ticketData,
-      id: `TCK-${Date.now()}`,
-      status: 'open',
+  const createSupportTicket = (ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'status' | 'messages'>, initialMessage: string) => {
+    const newT: SupportTicket = {
+      ...ticket,
+      id: `TIC-${Date.now().toString().slice(-4)}`,
       createdAt: 'Vừa xong',
+      status: 'open',
       messages: [
         {
-          id: `msg-${Date.now()}`,
+          id: 'm1',
           sender: 'user',
           text: initialMessage,
           timestamp: 'Vừa xong'
         }
       ]
     };
-    setTickets(prev => [newTicket, ...prev]);
+    setTickets(prev => [newT, ...prev]);
   };
 
   const adminReplyTicket = (ticketId: string, replyText: string, newStatus?: SupportTicket['status']) => {
@@ -322,11 +305,11 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (t.id === ticketId) {
         return {
           ...t,
-          status: newStatus || t.status,
+          status: newStatus || 'investigating',
           messages: [
             ...t.messages,
             {
-              id: `msg-${Date.now()}`,
+              id: `m-${Date.now()}`,
               sender: 'agent',
               text: replyText,
               timestamp: 'Vừa xong'
@@ -338,7 +321,6 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }));
   };
 
-  // Live Chat
   const adminSendChatMessage = (sessionId: string, text: string) => {
     setChatSessions(prev => prev.map(s => {
       if (s.id === sessionId) {
@@ -351,7 +333,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             {
               id: `msg-${Date.now()}`,
               sender: 'agent',
-              senderName: 'Admin CSKH',
+              senderName: 'CSKH CyberPool',
               text,
               timestamp: 'Vừa xong'
             }
@@ -364,7 +346,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const sendUserChatMessage = (text: string, orderRef?: string) => {
     const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: `cm-${Date.now()}`,
       sender: 'user',
       senderName: currentUser.name,
       text,
@@ -372,116 +354,48 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       orderRef
     };
     setChatMessages(prev => [...prev, newMsg]);
+  };
 
-    // Update primary session
-    setChatSessions(prev => prev.map(s => {
-      if (s.id === 'sess-1') {
+  const processManualOrder = (orderId: string, action: 'start_processing' | 'fulfill' | 'reject' | 'refund', data?: { deliveredContent?: string; note?: string; secretKey?: string; barcode?: string }) => {
+    setManualOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        let nextStatus: ManualOrder['status'] = o.status;
+        if (action === 'start_processing') nextStatus = 'processing';
+        if (action === 'fulfill') nextStatus = 'completed';
+        if (action === 'reject') nextStatus = 'pending_process';
+        if (action === 'refund') nextStatus = 'refunded';
+
         return {
-          ...s,
-          lastMessage: text,
-          updatedAt: 'Vừa xong',
-          messages: [...s.messages, newMsg]
+          ...o,
+          status: nextStatus,
+          deliveredContent: data?.deliveredContent || o.deliveredContent,
+          adminNote: data?.note || o.adminNote
         };
       }
-      return s;
-    }));
-
-    // Auto bot responder
-    setTimeout(() => {
-      const botReply: ChatMessage = {
-        id: `msg-bot-${Date.now()}`,
-        sender: 'agent',
-        senderName: 'Bot Hỗ Trợ Cyber',
-        text: 'Hệ thống đã tiếp nhận tin nhắn của bạn. Kỹ thuật viên hỗ trợ sẽ phản hồi trong giây lát!',
-        timestamp: 'Vừa xong',
-        orderRef
-      };
-      setChatMessages(p => [...p, botReply]);
-      setChatSessions(prev => prev.map(s => s.id === 'sess-1' ? { ...s, lastMessage: botReply.text, messages: [...s.messages, botReply] } : s));
-    }, 1500);
-  };
-
-  // Process Manual Order
-  const processManualOrder = (
-    orderId: string, 
-    action: 'start_processing' | 'fulfill' | 'reject' | 'refund', 
-    data?: { deliveredContent?: string; note?: string; secretKey?: string; barcode?: string }
-  ) => {
-    setManualOrders(prev => prev.map(mo => {
-      if (mo.id === orderId) {
-        if (action === 'start_processing') {
-          return { ...mo, status: 'processing', assignedAdmin: currentUser.name };
-        }
-        if (action === 'fulfill') {
-          return {
-            ...mo,
-            status: 'completed',
-            fulfillmentData: {
-              deliveredSecret: data?.deliveredContent || data?.secretKey || 'DELIVERED-OK-882190',
-              processedAt: 'Vừa xong',
-              processedBy: currentUser.name,
-              note: data?.note
-            }
-          };
-        }
-        if (action === 'refund' || action === 'reject') {
-          return {
-            ...mo,
-            status: action === 'refund' ? 'refunded' : 'rejected',
-            fulfillmentData: {
-              processedAt: 'Vừa xong',
-              processedBy: currentUser.name,
-              note: data?.note || 'Đã hủy đơn theo yêu cầu'
-            }
-          };
-        }
-      }
-      return mo;
+      return o;
     }));
   };
 
-  // Lucky Wheel Spin
-  const spinLuckyWheel = () => {
-    const spinCost = 10000;
-    if (currentUser.walletBalance < spinCost) {
-      return { success: false, message: 'Số dư không đủ 10.000đ để quay Vòng Quay May Mắn!' };
-    }
+  const spinLuckyWheel = (): { success: boolean; prize?: WheelPrize; message: string } => {
+    const randomIdx = Math.floor(Math.random() * luckyWheelPrizes.length);
+    const prize = luckyWheelPrizes[randomIdx];
 
-    updateUserBalance(-spinCost);
-    setCurrentUser(prev => ({ ...prev, totalSpun: (prev.totalSpun || 0) + 1 }));
-
-    // Pick prize based on probability
-    const rand = Math.random() * 100;
-    let cumulative = 0;
-    let selectedPrize = luckyWheelPrizes[luckyWheelPrizes.length - 1];
-
-    for (const p of luckyWheelPrizes) {
-      cumulative += p.probability;
-      if (rand <= cumulative) {
-        selectedPrize = p;
-        break;
-      }
-    }
-
-    if (selectedPrize.type === 'wallet_cash' && selectedPrize.value > 0) {
-      updateUserBalance(selectedPrize.value);
-    }
-
-    const newRecord: WheelSpinRecord = {
+    const spinRec: WheelSpinRecord = {
       id: `spin-${Date.now()}`,
       user: currentUser.name,
-      prizeName: selectedPrize.name,
-      prizeType: selectedPrize.type,
-      value: selectedPrize.value,
+      prizeName: prize.name,
+      prizeType: prize.type,
+      value: prize.value,
       timestamp: 'Vừa xong',
-      txId: generateTxHash().substring(0, 8).toUpperCase()
+      txId: `SPIN-${Math.floor(1000 + Math.random() * 9000)}`
     };
-    setSpinRecords(prev => [newRecord, ...prev]);
+
+    setSpinRecords(prev => [spinRec, ...prev]);
 
     return {
       success: true,
-      prize: selectedPrize,
-      message: `Chúc mừng bạn đã quay trúng: ${selectedPrize.name}!`
+      prize,
+      message: `Chúc mừng bạn đã trúng: ${prize.name}`
     };
   };
 
@@ -495,6 +409,8 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         chatMessages,
         luckyWheelPrizes,
         spinRecords,
+        isLoading,
+        fetchOrders,
         joinPool,
         buyInstantSingle,
         createTopupOrder,

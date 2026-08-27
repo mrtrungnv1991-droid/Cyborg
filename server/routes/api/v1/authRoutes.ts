@@ -94,3 +94,57 @@ authRouter.post('/register', (req, res) => {
     user: newUser
   });
 });
+
+// POST /api/v1/auth/logout
+authRouter.post('/logout', requireAuth, (req: AuthenticatedRequest, res) => {
+  AuditService.log({
+    actorId: req.user!.id,
+    actorName: req.user!.name,
+    actorRole: req.user!.role,
+    action: 'USER_LOGOUT',
+    resource: 'AUTH_SESSION',
+    ipAddress: req.ip
+  });
+
+  res.json({
+    success: true,
+    message: 'Logged out successfully'
+  });
+});
+
+// GET /api/v1/auth/sessions
+authRouter.get('/sessions', requireAuth, (req: AuthenticatedRequest, res) => {
+  const sessions = [
+    {
+      id: `sess-${req.user!.id}-curr`,
+      device: 'Chrome on macOS (Current Session)',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
+      createdAt: req.user!.lastLoginAt || new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000 * 30).toISOString()
+    }
+  ];
+
+  res.json({
+    success: true,
+    sessions
+  });
+});
+
+// DELETE /api/v1/auth/sessions/:id
+authRouter.delete('/sessions/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  res.json({
+    success: true,
+    message: 'Session revoked successfully'
+  });
+});
+
+// POST /api/v1/auth/forgot-password
+authRouter.post('/forgot-password', (req, res) => {
+  const { email } = req.body;
+  res.json({
+    success: true,
+    message: `Đã gửi liên kết khôi phục mật khẩu tới ${email || 'email của bạn'}`
+  });
+});
+

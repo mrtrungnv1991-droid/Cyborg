@@ -1,23 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Flame, Clock, Zap, ChevronRight, ChevronLeft, LayoutGrid, SlidersHorizontal } from 'lucide-react';
-import { Product } from '../types';
+import { Product, GroupPool } from '../types';
 import { formatCurrency } from '../utils/formatters';
 
 interface FlashSalesSectionProps {
   products: Product[];
   currency: 'VND' | 'USD';
-  onSelectProduct: (product: Product) => void;
+  onSelectProduct?: (product: Product) => void;
+  onOpenPool?: (product: Product, pool?: GroupPool) => void;
+  onInstantBuy?: (product: Product) => void;
 }
 
 export const FlashSalesSection: React.FC<FlashSalesSectionProps> = ({
   products,
   currency,
-  onSelectProduct
+  onSelectProduct,
+  onOpenPool,
+  onInstantBuy
 }) => {
   const flashProducts = products.filter(p => p.isFlashSale);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const handleProductClick = (product: Product) => {
+    const activePool = product.activePools && product.activePools.length > 0 ? product.activePools[0] : undefined;
+    if (onOpenPool) {
+      onOpenPool(product, activePool);
+    } else if (onSelectProduct) {
+      onSelectProduct(product);
+    }
+  };
   const [scrollProgress, setScrollProgress] = useState(0);
   const [mobileView, setMobileView] = useState<'grid4' | 'carousel'>('grid4');
 
@@ -228,7 +241,7 @@ export const FlashSalesSection: React.FC<FlashSalesSectionProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectProduct(product);
+                      handleProductClick(product);
                     }}
                     className="px-2 py-1 rounded bg-orange-500 hover:bg-orange-400 text-black font-mono font-black text-[9px] uppercase shadow-sm flex items-center gap-0.5 cursor-pointer"
                   >
@@ -258,7 +271,7 @@ export const FlashSalesSection: React.FC<FlashSalesSectionProps> = ({
             return (
               <div
                 key={product.id}
-                onClick={() => onSelectProduct(product)}
+                onClick={() => handleProductClick(product)}
                 className="w-[165px] xs:w-[185px] sm:w-[380px] md:w-[420px] shrink-0 snap-start group cursor-pointer p-2.5 sm:p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-orange-500/80 hover:shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all flex flex-col sm:flex-row gap-2 sm:gap-4 relative select-none"
               >
                 <div className="w-full sm:w-28 md:w-32 h-20 sm:h-28 md:h-32 rounded-lg overflow-hidden shrink-0 border border-slate-800 relative bg-slate-900">

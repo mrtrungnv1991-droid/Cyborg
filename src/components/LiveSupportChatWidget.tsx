@@ -18,9 +18,9 @@ import {
 import { ChatMessage, UserProfile } from '../types';
 
 interface LiveSupportChatWidgetProps {
-  user: UserProfile;
-  messages: ChatMessage[];
-  onSendMessage: (text: string, orderRef?: string) => void;
+  user?: UserProfile;
+  messages?: ChatMessage[];
+  onSendMessage?: (text: string, orderRef?: string) => void;
   telegramSupportUrl?: string;
   zaloSupportUrl?: string;
 }
@@ -34,11 +34,23 @@ const QUICK_QUESTIONS = [
 
 export const LiveSupportChatWidget: React.FC<LiveSupportChatWidgetProps> = ({
   user,
-  messages,
+  messages: externalMessages,
   onSendMessage,
   telegramSupportUrl = 'https://t.me/cyberpool_support',
   zaloSupportUrl = 'https://zalo.me/0988889999'
 }) => {
+  const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([
+    {
+      id: 'msg-1',
+      sender: 'agent',
+      senderName: 'Trợ Lý AI CyberPool 24/7',
+      text: 'Xin chào! CyberPool sẵn sàng hỗ trợ bạn kích hoạt mã, tra cứu đơn hàng hoặc bảo hành 1 đổi 1 tức thì.',
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+
+  const activeMessages = externalMessages && externalMessages.length > 0 ? externalMessages : internalMessages;
+
   const [isOpen, setIsOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const [orderRefVal, setOrderRefVal] = useState('');
@@ -53,20 +65,69 @@ export const LiveSupportChatWidget: React.FC<LiveSupportChatWidgetProps> = ({
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isOpen]);
+  }, [activeMessages, isOpen]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputVal.trim()) return;
 
-    onSendMessage(inputVal.trim(), orderRefVal.trim() || undefined);
+    const userText = inputVal.trim();
+    const orderRef = orderRefVal.trim() || undefined;
+
+    if (onSendMessage) {
+      onSendMessage(userText, orderRef);
+    } else {
+      const newMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        sender: 'user',
+        senderName: user?.username || 'Bạn',
+        text: userText,
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        orderRef
+      };
+      setInternalMessages(prev => [...prev, newMsg]);
+
+      setTimeout(() => {
+        const botReply: ChatMessage = {
+          id: `msg-reply-${Date.now()}`,
+          sender: 'agent',
+          senderName: 'Hỗ Trợ Viên Trực Tuyến',
+          text: `Cảm ơn bạn đã nhắn tin! Yêu cầu "${userText.slice(0, 35)}..." đã được chuyển tới bộ phận kỹ thuật hỗ trợ bạn trong giây lát.`,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        };
+        setInternalMessages(prev => [...prev, botReply]);
+      }, 1000);
+    }
+
     setInputVal('');
     setOrderRefVal('');
     setShowOrderInput(false);
   };
 
   const handleQuickSend = (text: string) => {
-    onSendMessage(text);
+    if (onSendMessage) {
+      onSendMessage(text);
+    } else {
+      const newMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        sender: 'user',
+        senderName: user?.username || 'Bạn',
+        text: text,
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      };
+      setInternalMessages(prev => [...prev, newMsg]);
+
+      setTimeout(() => {
+        const botReply: ChatMessage = {
+          id: `msg-reply-${Date.now()}`,
+          sender: 'agent',
+          senderName: 'Hỗ Trợ Viên Trực Tuyến',
+          text: `CyberPool đã ghi nhận câu hỏi "${text}". Hệ thống bảo hiểm Escrow tự động bảo lãnh 100% tiền mua và kích hoạt mã của bạn.`,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        };
+        setInternalMessages(prev => [...prev, botReply]);
+      }, 800);
+    }
   };
 
   return (
@@ -184,7 +245,7 @@ export const LiveSupportChatWidget: React.FC<LiveSupportChatWidgetProps> = ({
             </div>
 
             {/* Dynamic Conversation Messages */}
-            {messages.map((m) => {
+            {activeMessages.map((m) => {
               const isMe = m.sender === 'user';
               return (
                 <div

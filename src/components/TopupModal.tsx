@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Zap, 
@@ -19,27 +19,51 @@ import { GameItem, TopupTier, TopupOrder, UserProfile } from '../types';
 import { formatCurrency } from '../utils/formatters';
 
 interface TopupModalProps {
-  game: GameItem | null;
+  game?: GameItem | null;
+  initialGame?: GameItem | null;
+  games?: GameItem[];
   isOpen: boolean;
   onClose: () => void;
-  user: UserProfile;
+  user?: UserProfile;
+  userBalance?: number;
+  currency?: 'VND' | 'USD';
   onConfirmTopup: (order: TopupOrder, isGroupTopup: boolean) => void;
   onOpenWallet: () => void;
 }
 
 export const TopupModal: React.FC<TopupModalProps> = ({
   game,
+  initialGame,
+  games = [],
   isOpen,
   onClose,
   user,
+  userBalance,
+  currency = 'VND',
   onConfirmTopup,
   onOpenWallet
 }) => {
-  if (!isOpen || !game) return null;
+  const activeCurrency = user?.currency || currency;
+  const currentBalance = user?.walletBalance ?? userBalance ?? 0;
 
-  const [selectedTier, setSelectedTier] = useState<TopupTier>(game.tiers[0]);
+  // Resolve current active game
+  const [currentGame, setCurrentGame] = useState<GameItem | null>(initialGame || game || games[0] || null);
+  const [gameSearch, setGameSearch] = useState('');
+  const [showGamePicker, setShowGamePicker] = useState(false);
+
+  useEffect(() => {
+    if (initialGame || game) {
+      setCurrentGame(initialGame || game || null);
+    } else if (!currentGame && games.length > 0) {
+      setCurrentGame(games[0]);
+    }
+  }, [initialGame, game, games]);
+
+  const activeGame = currentGame || (games.length > 0 ? games[0] : null);
+
+  const [selectedTier, setSelectedTier] = useState<TopupTier | null>(null);
   const [uid, setUid] = useState('');
-  const [selectedServer, setSelectedServer] = useState(game.servers?.[0] || '');
+  const [selectedServer, setSelectedServer] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifiedCharacter, setVerifiedCharacter] = useState<string | null>(null);
@@ -47,8 +71,26 @@ export const TopupModal: React.FC<TopupModalProps> = ({
   const [selectedProvider, setSelectedProvider] = useState<'Midasbuy API' | 'SmileOne Direct' | 'Garena Partner' | 'UniPin Gateway'>('Midasbuy API');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const price = mode === 'group_topup' ? selectedTier.groupPrice : selectedTier.retailPrice;
-  const isBalanceSufficient = user.walletBalance >= price;
+  useEffect(() => {
+    if (activeGame) {
+      if (activeGame.tiers && activeGame.tiers.length > 0) {
+        setSelectedTier(activeGame.tiers[0]);
+      }
+      setSelectedServer(activeGame.servers?.[0] || '');
+      setVerifiedCharacter(null);
+    }
+  }, [activeGame?.id]);
+
+  if (!isOpen || !activeGame) return null;
+
+  const currentTier = selectedTier || activeGame.tiers[0];
+  const price = currentTier ? (mode === 'group_topup' ? currentTier.groupPrice : currentTier.retailPrice) : 0;
+  const isBalanceSufficient = currentBalance >= price;
+
+  const filteredGames = games.filter(g => 
+    g.name.toLowerCase().includes(gameSearch.toLowerCase()) || 
+    g.publisher.toLowerCase().includes(gameSearch.toLowerCase())
+  );
 
   // Simulate UID Lookup
   const handleVerifyAccount = () => {
@@ -76,13 +118,13 @@ export const TopupModal: React.FC<TopupModalProps> = ({
       setIsProcessing(false);
       const newOrder: TopupOrder = {
         id: `topup-${Date.now()}`,
-        gameId: game.id,
-        gameTitle: game.name,
+        gameId: activeGame.id,
+        gameTitle: activeGame.name,
         uid: uid.trim(),
         zoneId: zoneId.trim() || undefined,
         server: selectedServer || undefined,
         characterName: verifiedCharacter ? verifiedCharacter.split(' ')[0] : 'In-game Player',
-        tierName: selectedTier.name,
+        tierName: currentTier.name,
         pricePaid: price,
         status: 'completed',
         txId: `TX-TOPUP-${Date.now().toString().slice(-6)}`,
@@ -101,32 +143,32 @@ export const TopupModal: React.FC<TopupModalProps> = ({
         {/* Banner Header */}
         <div className="relative h-32 sm:h-40 overflow-hidden bg-slate-900 border-b border-slate-800">
           <img 
-            src={game.banner} 
-            alt={game.name}
+            src={activeGame.banner} 
+            alt={activeGame.name}
             className="w-full h-full object-cover opacity-40 mix-blend-luminosity"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0c0f17] via-[#0c0f17]/60 to-transparent" />
           
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-black/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/50 transition-colors"
+            className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-black/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/50 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
 
           <div className="absolute bottom-4 left-4 sm:left-6 flex items-center gap-3">
             <div className="w-14 h-14 rounded-xl border border-cyan-400/50 overflow-hidden bg-slate-950 p-1 shadow-lg shrink-0">
-              <img src={game.thumbnail} alt={game.name} className="w-full h-full object-cover rounded-lg" />
+              <img src={activeGame.thumbnail} alt={activeGame.name} className="w-full h-full object-cover rounded-lg" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-400 border border-cyan-500/30 uppercase">
-                  {game.publisher}
+                  {activeGame.publisher}
                 </span>
                 <span className="text-xs text-slate-400 font-mono">Giao tự động 3s</span>
               </div>
               <h2 className="text-lg sm:text-xl font-bold font-mono text-white mt-0.5">
-                {game.name}
+                {activeGame.name}
               </h2>
             </div>
           </div>
@@ -134,6 +176,27 @@ export const TopupModal: React.FC<TopupModalProps> = ({
 
         {/* Content */}
         <div className="p-4 sm:p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+          {/* Quick Game Switcher if multiple games available */}
+          {games.length > 1 && (
+            <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono">
+              <span className="text-slate-400">Đổi game khác ({games.length} game):</span>
+              <select
+                value={activeGame.id}
+                onChange={(e) => {
+                  const target = games.find(g => g.id === e.target.value);
+                  if (target) setCurrentGame(target);
+                }}
+                className="bg-slate-900 border border-slate-700 text-cyan-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-cyan-400"
+              >
+                {games.map(g => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.publisher})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Mode Switcher: Direct vs Group Buy Top-up */}
           <div className="grid grid-cols-2 gap-3 p-1 rounded-xl bg-slate-950 border border-slate-800">
             <button
@@ -165,7 +228,7 @@ export const TopupModal: React.FC<TopupModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-mono font-bold text-slate-300 flex items-center gap-1.5">
                 <Gamepad2 className="w-4 h-4 text-cyan-400" />
-                <span>{game.uidLabel}</span>
+                <span>{activeGame.uidLabel || 'User ID / Riot ID / Tên Đăng Nhập'}</span>
               </label>
               {verifiedCharacter && (
                 <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
@@ -184,7 +247,7 @@ export const TopupModal: React.FC<TopupModalProps> = ({
                     setUid(e.target.value);
                     setVerifiedCharacter(null);
                   }}
-                  placeholder={game.uidPlaceholder}
+                  placeholder={activeGame.uidPlaceholder || 'Nhập ID game hoặc Riot ID...'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2.5 px-3 font-mono text-xs text-white focus:outline-none focus:border-cyan-400 placeholder:text-slate-600"
                 />
               </div>
@@ -205,7 +268,7 @@ export const TopupModal: React.FC<TopupModalProps> = ({
             </div>
 
             {/* Server Selector if applicable */}
-            {game.requiresServer && game.servers && (
+            {activeGame.requiresServer && activeGame.servers && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
                 <div>
                   <label className="text-[11px] font-mono text-slate-400 flex items-center gap-1 mb-1">
@@ -217,13 +280,13 @@ export const TopupModal: React.FC<TopupModalProps> = ({
                     onChange={(e) => setSelectedServer(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 px-2.5 font-mono text-xs text-white focus:outline-none focus:border-cyan-400"
                   >
-                    {game.servers.map(srv => (
+                    {activeGame.servers.map(srv => (
                       <option key={srv} value={srv}>{srv}</option>
                     ))}
                   </select>
                 </div>
 
-                {game.hasZoneId && (
+                {activeGame.hasZoneId && (
                   <div>
                     <label className="text-[11px] font-mono text-slate-400 mb-1 block">
                       Zone ID
@@ -232,7 +295,7 @@ export const TopupModal: React.FC<TopupModalProps> = ({
                       type="text"
                       value={zoneId}
                       onChange={(e) => setZoneId(e.target.value)}
-                      placeholder={game.zonePlaceholder || 'Zone ID'}
+                      placeholder={activeGame.zonePlaceholder || 'Zone ID'}
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 px-2.5 font-mono text-xs text-white focus:outline-none focus:border-cyan-400 placeholder:text-slate-600"
                     />
                   </div>
@@ -248,8 +311,8 @@ export const TopupModal: React.FC<TopupModalProps> = ({
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {game.tiers.map((tier) => {
-                const isSelected = selectedTier.id === tier.id;
+              {activeGame.tiers.map((tier) => {
+                const isSelected = currentTier.id === tier.id;
                 const tierPrice = mode === 'group_topup' ? tier.groupPrice : tier.retailPrice;
 
                 return (
@@ -279,11 +342,11 @@ export const TopupModal: React.FC<TopupModalProps> = ({
                         </div>
                         <div className="mt-2 flex items-baseline gap-2">
                           <span className="text-sm font-bold font-mono text-cyan-400">
-                            {formatCurrency(tierPrice, user.currency)}
+                            {formatCurrency(tierPrice, activeCurrency)}
                           </span>
                           {mode === 'group_topup' && (
                             <span className="text-[10px] line-through text-slate-500 font-mono">
-                              {formatCurrency(tier.retailPrice, user.currency)}
+                              {formatCurrency(tier.retailPrice, activeCurrency)}
                             </span>
                           )}
                         </div>
@@ -319,7 +382,7 @@ export const TopupModal: React.FC<TopupModalProps> = ({
           <div className="text-left w-full sm:w-auto font-mono">
             <div className="text-[11px] text-slate-400">Tổng thanh toán:</div>
             <div className="text-lg sm:text-xl font-black text-cyan-400">
-              {formatCurrency(price, user.currency)}
+              {formatCurrency(price, activeCurrency)}
             </div>
           </div>
 

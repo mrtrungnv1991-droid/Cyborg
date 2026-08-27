@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
   TransactionRecord, 
   TelcoCardSubmission, 
@@ -6,24 +6,26 @@ import {
   CTVWithdrawal 
 } from '../types';
 import { INITIAL_CTV_WITHDRAWALS } from '../data/shopclone7ExtendedData';
-import { generateTxHash } from '../utils/formatters';
 import { useAuth } from './AuthContext';
+import { walletApi } from '../api/wallet';
 
 interface WalletContextType {
   transactions: TransactionRecord[];
   telcoCards: TelcoCardSubmission[];
   topupInvoices: TopupInvoice[];
   withdrawals: CTVWithdrawal[];
+  isLoading: boolean;
+  fetchWalletData: () => Promise<void>;
   addTransaction: (tx: Omit<TransactionRecord, 'id' | 'createdAt'>) => TransactionRecord;
-  depositMoney: (amount: number, methodTitle: string) => void;
-  submitTelcoCard: (submission: { telco: TelcoCardSubmission['telco']; declaredAmount: number; pin: string; serial: string }) => void;
+  depositMoney: (amount: number, methodTitle: string) => Promise<{ success: boolean; error?: string }>;
+  submitTelcoCard: (submission: { telco: TelcoCardSubmission['telco']; declaredAmount: number; pin: string; serial: string }) => Promise<{ success: boolean; error?: string; receivedAmount?: number }>;
   createTopupInvoice: (invoice: Omit<TopupInvoice, 'id' | 'createdAt' | 'txCode' | 'status'>) => TopupInvoice;
   approveInvoice: (invoiceId: string) => void;
   rejectInvoice: (invoiceId: string, reason?: string) => void;
-  requestWithdrawal: (amount: number, bankName: string, accountNo: string, accountName: string) => void;
+  requestWithdrawal: (amount: number, bankName: string, accountNo: string, accountName: string) => Promise<{ success: boolean; error?: string }>;
 }
 
-const INITIAL_TRANSACTIONS: TransactionRecord[] = [
+const INITIAL_TRANSACTIONS_FALLBACK: TransactionRecord[] = [
   {
     id: 'tx-001',
     type: 'deposit_qr',
@@ -43,20 +45,10 @@ const INITIAL_TRANSACTIONS: TransactionRecord[] = [
     status: 'completed',
     createdAt: 'Hôm nay 14:10',
     txCode: 'POOL-9921'
-  },
-  {
-    id: 'tx-003',
-    type: 'topup_game',
-    description: 'Nạp 6,480 Đá Sáng Thế Genshin Impact',
-    amount: -1850000,
-    balanceAfter: 1515000,
-    status: 'completed',
-    createdAt: 'Hôm qua 21:05',
-    txCode: 'TOPUP-3382'
   }
 ];
 
-const INITIAL_INVOICES: TopupInvoice[] = [
+const INITIAL_INVOICES_FALLBACK: TopupInvoice[] = [
   {
     id: 'INV-1001',
     txCode: 'VQR-MB-99210',
@@ -73,186 +65,119 @@ const INITIAL_INVOICES: TopupInvoice[] = [
       accountNo: '0388999999',
       content: 'NAP CYBER MB001'
     }
-  },
-  {
-    id: 'INV-1002',
-    txCode: 'CARD-VTT-4821',
-    userId: 'MB-002',
-    userName: 'GamerPro99',
-    method: 'telco_card',
-    amount: 200000,
-    receivedAmount: 160000,
-    fee: 40000,
-    status: 'pending',
-    createdAt: '2026-08-27 15:35',
-    cardInfo: {
-      telco: 'VIETTEL',
-      serial: '100058291039',
-      pin: '98210491823901'
-    }
-  },
-  {
-    id: 'INV-1003',
-    txCode: 'USDT-TRC20-091',
-    userId: 'MB-003',
-    userName: 'HoangLongMMO',
-    method: 'crypto_usdt',
-    amount: 2540000,
-    receivedAmount: 2540000,
-    fee: 0,
-    status: 'pending',
-    createdAt: '2026-08-27 15:42',
-    cryptoInfo: {
-      coin: 'USDT',
-      address: 'TXu9...cyber88',
-      txHash: '0x99281a8e9...',
-      rate: 25400
-    }
   }
 ];
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser, updateUserBalance } = useAuth();
+  const { refreshUserProfile } = useAuth();
 
-  const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_transactions');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return INITIAL_TRANSACTIONS;
-  });
+  const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS_FALLBACK);
+  const [telcoCards, setTelcoCards] = useState<TelcoCardSubmission[]>([]);
+  const [topupInvoices, setTopupInvoices] = useState<TopupInvoice[]>(INITIAL_INVOICES_FALLBACK);
+  const [withdrawals, setWithdrawals] = useState<CTVWithdrawal[]>(INITIAL_CTV_WITHDRAWALS);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const [telcoCards, setTelcoCards] = useState<TelcoCardSubmission[]>(() => {
+  const fetchWalletData = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const saved = localStorage.getItem('cyberpool_telco_cards');
-      if (saved) return JSON.parse(saved);
+      const res = await walletApi.getLedger();
+      if (res.success && res.data) {
+        if (res.data.transactions && res.data.transactions.length > 0) {
+          setTransactions(res.data.transactions);
+        }
+      }
     } catch {
-      // ignore
+      // server sync fallback
+    } finally {
+      setIsLoading(false);
     }
-    return [];
-  });
-
-  const [topupInvoices, setTopupInvoices] = useState<TopupInvoice[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_topup_invoices');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return INITIAL_INVOICES;
-  });
-
-  const [withdrawals, setWithdrawals] = useState<CTVWithdrawal[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_withdrawals');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return INITIAL_CTV_WITHDRAWALS;
-  });
+  }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_transactions', JSON.stringify(transactions));
-    } catch {}
-  }, [transactions]);
+    fetchWalletData();
+  }, [fetchWalletData]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_telco_cards', JSON.stringify(telcoCards));
-    } catch {}
-  }, [telcoCards]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_topup_invoices', JSON.stringify(topupInvoices));
-    } catch {}
-  }, [topupInvoices]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_withdrawals', JSON.stringify(withdrawals));
-    } catch {}
-  }, [withdrawals]);
-
-  const addTransaction = (txData: Omit<TransactionRecord, 'id' | 'createdAt'>): TransactionRecord => {
+  const addTransaction = (tx: Omit<TransactionRecord, 'id' | 'createdAt'>): TransactionRecord => {
     const newTx: TransactionRecord = {
-      ...txData,
-      id: `tx-${Date.now()}`,
+      ...tx,
+      id: `tx-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       createdAt: 'Vừa xong'
     };
     setTransactions(prev => [newTx, ...prev]);
     return newTx;
   };
 
-  const depositMoney = (amount: number, methodTitle: string) => {
-    const newBalance = currentUser.walletBalance + amount;
-    updateUserBalance(amount);
-    addTransaction({
-      type: 'deposit_qr',
-      description: `Nạp tiền qua ${methodTitle}`,
-      amount,
-      balanceAfter: newBalance,
-      status: 'completed',
-      txCode: generateTxHash().substring(0, 10).toUpperCase()
-    });
+  const depositMoney = async (amount: number, methodTitle: string) => {
+    try {
+      const res = await walletApi.deposit(amount, methodTitle);
+      if (res.success && res.data) {
+        if (res.data.transaction) {
+          setTransactions(prev => [res.data!.transaction, ...prev]);
+        }
+        await refreshUserProfile();
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Nạp tiền thất bại' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Lỗi mạng' };
+    }
   };
 
-  const submitTelcoCard = (submission: { telco: TelcoCardSubmission['telco']; declaredAmount: number; pin: string; serial: string }) => {
-    const feeRate = 0.20; // 20%
-    const receivedAmount = Math.round(submission.declaredAmount * (1 - feeRate));
-    const txId = `TELCO-${Date.now()}`;
+  const submitTelcoCard = async (submission: { 
+    telco: TelcoCardSubmission['telco']; 
+    declaredAmount: number; 
+    pin: string; 
+    serial: string 
+  }) => {
+    try {
+      const res = await walletApi.submitTelcoCard(submission);
+      if (res.success && res.data) {
+        const received = res.data.receivedAmount || Math.round(submission.declaredAmount * 0.82);
+        
+        const cardRecord: TelcoCardSubmission = {
+          id: `card-${Date.now()}`,
+          telco: submission.telco,
+          serial: submission.serial,
+          pin: submission.pin,
+          declaredAmount: submission.declaredAmount,
+          receivedAmount: received,
+          feePercent: 18,
+          status: 'success',
+          createdAt: 'Vừa xong',
+          txId: `TX-TELCO-${Date.now()}`
+        };
+        setTelcoCards(prev => [cardRecord, ...prev]);
 
-    const newSubmission: TelcoCardSubmission = {
-      id: txId,
-      telco: submission.telco,
-      declaredAmount: submission.declaredAmount,
-      receivedAmount,
-      feePercent: 20,
-      pin: submission.pin,
-      serial: submission.serial,
-      status: 'success',
-      createdAt: 'Vừa xong',
-      txId
-    };
-
-    setTelcoCards(prev => [newSubmission, ...prev]);
-    
-    // Auto credit funds
-    depositMoney(receivedAmount, `Thẻ cào ${submission.telco} ${submission.declaredAmount.toLocaleString()}đ`);
+        if (res.data.transaction) {
+          setTransactions(prev => [res.data!.transaction, ...prev]);
+        }
+        await refreshUserProfile();
+        return { success: true, receivedAmount: received };
+      }
+      return { success: false, error: res.error || 'Thẻ không hợp lệ' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Lỗi mạng' };
+    }
   };
 
-  const createTopupInvoice = (invoiceData: Omit<TopupInvoice, 'id' | 'createdAt' | 'txCode' | 'status'>): TopupInvoice => {
-    const newInvoice: TopupInvoice = {
-      ...invoiceData,
-      id: `INV-${Date.now()}`,
-      txCode: `TX-${generateTxHash().substring(0, 8).toUpperCase()}`,
+  const createTopupInvoice = (invoice: Omit<TopupInvoice, 'id' | 'createdAt' | 'txCode' | 'status'>): TopupInvoice => {
+    const newInv: TopupInvoice = {
+      ...invoice,
+      id: `INV-${Date.now().toString().slice(-4)}`,
+      txCode: `TX-${Math.floor(100000 + Math.random() * 900000)}`,
       status: 'pending',
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+      createdAt: new Date().toLocaleString('vi-VN')
     };
-    setTopupInvoices(prev => [newInvoice, ...prev]);
-    return newInvoice;
+    setTopupInvoices(prev => [newInv, ...prev]);
+    return newInv;
   };
 
   const approveInvoice = (invoiceId: string) => {
     setTopupInvoices(prev => prev.map(inv => {
       if (inv.id === invoiceId) {
-        if (inv.userId === currentUser.id || inv.userName === currentUser.name) {
-          updateUserBalance(inv.receivedAmount);
-          addTransaction({
-            type: 'deposit_qr',
-            description: `Duyệt nạp tiền hóa đơn #${inv.id}`,
-            amount: inv.receivedAmount,
-            balanceAfter: currentUser.walletBalance + inv.receivedAmount,
-            status: 'completed',
-            txCode: inv.txCode
-          });
-        }
+        depositMoney(inv.receivedAmount, `Duyệt hoá đơn ${inv.txCode}`);
         return { ...inv, status: 'completed' };
       }
       return inv;
@@ -262,38 +187,45 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const rejectInvoice = (invoiceId: string, reason?: string) => {
     setTopupInvoices(prev => prev.map(inv => {
       if (inv.id === invoiceId) {
-        return { ...inv, status: 'cancelled', note: reason };
+        return { ...inv, status: 'failed', rejectReason: reason || 'Từ chối bởi Quản trị viên' };
       }
       return inv;
     }));
   };
 
-  const requestWithdrawal = (amount: number, bankName: string, accountNo: string, accountName: string) => {
-    if (currentUser.walletBalance < amount) return;
-    updateUserBalance(-amount);
+  const requestWithdrawal = async (amount: number, bankName: string, accountNo: string, accountName: string) => {
+    try {
+      const res = await walletApi.requestWithdrawal({
+        amount,
+        bankName,
+        accountNumber: accountNo,
+        accountName
+      });
 
-    const newWithdrawal: CTVWithdrawal = {
-      id: `WD-${Date.now()}`,
-      ctvId: currentUser.id,
-      ctvName: currentUser.name,
-      amount,
-      bankName,
-      accountNumber: accountNo,
-      accountNo,
-      accountName,
-      status: 'pending',
-      createdAt: 'Vừa xong'
-    };
+      if (res.success && res.data) {
+        const newW: CTVWithdrawal = {
+          id: `wd-${Date.now()}`,
+          ctvId: 'usr-buyer-01',
+          ctvName: accountName,
+          amount,
+          bankName,
+          accountNumber: accountNo,
+          accountName,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        };
+        setWithdrawals(prev => [newW, ...prev]);
 
-    setWithdrawals(prev => [newWithdrawal, ...prev]);
-    addTransaction({
-      type: 'buy_instant',
-      description: `Rút tiền về tài khoản ngân hàng (${bankName})`,
-      amount: -amount,
-      balanceAfter: currentUser.walletBalance - amount,
-      status: 'processing',
-      txCode: newWithdrawal.id
-    });
+        if (res.data.transaction) {
+          setTransactions(prev => [res.data!.transaction, ...prev]);
+        }
+        await refreshUserProfile();
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Rút tiền thất bại' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Lỗi mạng' };
+    }
   };
 
   return (
@@ -303,6 +235,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         telcoCards,
         topupInvoices,
         withdrawals,
+        isLoading,
+        fetchWalletData,
         addTransaction,
         depositMoney,
         submitTelcoCard,

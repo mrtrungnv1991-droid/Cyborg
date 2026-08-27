@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
   Product, 
   GameItem, 
@@ -9,6 +9,7 @@ import {
 import { INITIAL_PRODUCTS } from '../data/mockProducts';
 import { INITIAL_GAMES } from '../data/mockTopupGames';
 import { INITIAL_EXTENDED_CATEGORIES } from '../data/shopclone7ExtendedData';
+import { productsApi } from '../api/products';
 
 interface CatalogContextType {
   products: Product[];
@@ -22,15 +23,17 @@ interface CatalogContextType {
   setSortBy: (sort: 'popular' | 'price_low' | 'price_high' | 'rating' | 'discount') => void;
   selectedPlatform: string;
   setSelectedPlatform: (plat: string) => void;
+  isLoading: boolean;
+  fetchCatalog: () => Promise<void>;
   
   // Product actions
-  addNewProduct: (newProduct: Partial<Product>) => void;
-  updateProduct: (productId: string, updatedData: Partial<Product>) => void;
-  deleteProduct: (productId: string) => void;
-  updateProductStock: (productId: string, newStock: number) => void;
-  adjustProductStock: (productId: string, delta: number) => void;
+  addNewProduct: (newProduct: Partial<Product>) => Promise<void>;
+  updateProduct: (productId: string, updatedData: Partial<Product>) => Promise<void>;
+  deleteProduct: (productId: string) => Promise<void>;
+  updateProductStock: (productId: string, newStock: number) => Promise<void>;
+  adjustProductStock: (productId: string, delta: number) => Promise<void>;
   toggleFlashSale: (productId: string, discountPercent?: number, isFlashSale?: boolean, flashSaleData?: Partial<Product>) => void;
-  bulkAddStock: (productId: string, rawKeys: string[]) => void;
+  bulkAddStock: (productId: string, rawKeys: string[]) => Promise<{ success: boolean; message: string }>;
   
   // Game actions
   updateGame: (gameId: string, updatedGame: Partial<GameItem>) => void;
@@ -50,55 +53,47 @@ interface CatalogContextType {
 const CatalogContext = createContext<CatalogContextType | undefined>(undefined);
 
 export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_products');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_PRODUCTS;
-  });
-
-  const [games, setGames] = useState<GameItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_games');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_GAMES;
-  });
-
-  const [categories, setCategories] = useState<CategoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('cyberpool_categories');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_EXTENDED_CATEGORIES;
-  });
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [games, setGames] = useState<GameItem[]>(INITIAL_GAMES);
+  const [categories, setCategories] = useState<CategoryItem[]>(INITIAL_EXTENDED_CATEGORIES);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'popular' | 'price_low' | 'price_high' | 'rating' | 'discount'>('popular');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
 
-  useEffect(() => {
+  const fetchCatalog = useCallback(async () => {
+    setIsLoading(true);
     try {
-      localStorage.setItem('cyberpool_products', JSON.stringify(products));
-    } catch {}
-  }, [products]);
+      const [prodRes, gameRes] = await Promise.all([
+        productsApi.getProducts(),
+        productsApi.getGames()
+      ]);
+
+      if (prodRes.success && prodRes.data?.products) {
+        setProducts(prodRes.data.products);
+        if (prodRes.data.categories && prodRes.data.categories.length > 0) {
+          setCategories(prodRes.data.categories);
+        }
+      }
+
+      if (gameRes.success && gameRes.data?.games) {
+        setGames(gameRes.data.games);
+      }
+    } catch {
+      // server sync fallback
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_games', JSON.stringify(games));
-    } catch {}
-  }, [games]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('cyberpool_categories', JSON.stringify(categories));
-    } catch {}
-  }, [categories]);
+    fetchCatalog();
+  }, [fetchCatalog]);
 
   // Product Actions
-  const addNewProduct = (newProduct: Partial<Product>) => {
+  const addNewProduct = async (newProduct: Partial<Product>) => {
     const prod: Product = {
       id: `prod_${Date.now()}`,
       title: newProduct.title || 'Sản Phẩm Mới',
@@ -119,53 +114,66 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
         name: 'CyberPool Official',
         avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
         badge: 'Cyber Escrow',
-        rating: 5.0,
-        totalDeals: 1200,
-        completedPools: 450,
-        responseTime: '< 1 phút'
+        rating: 4.9,
+        totalDeals: 12000,
+        completedPools: 850,
+        responseTime: '1-3 phút'
       },
-      activePools: newProduct.activePools || [],
-      rating: newProduct.rating || 5.0,
-      reviewCount: newProduct.reviewCount || 1,
-      stockAvailable: newProduct.stockAvailable ?? 50,
-      tags: newProduct.tags || ['Hot Deal'],
-      discountPercent: newProduct.discountPercent || 0,
-      isFlashSale: newProduct.isFlashSale ?? false,
-      ...newProduct
+      tags: newProduct.tags || ['Bestseller', 'Chính Hãng'],
+      stockAvailable: newProduct.stockAvailable || 10,
+      rating: 5.0,
+      reviewCount: 1,
+      activePools: newProduct.activePools || []
     };
+
     setProducts(prev => [prod, ...prev]);
+
+    try {
+      await productsApi.createProduct(prod);
+    } catch {
+      // ignore
+    }
   };
 
-  const updateProduct = (productId: string, updatedData: Partial<Product>) => {
+  const updateProduct = async (productId: string, updatedData: Partial<Product>) => {
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, ...updatedData } : p));
+    try {
+      await productsApi.updateProduct(productId, updatedData);
+    } catch {}
   };
 
-  const deleteProduct = (productId: string) => {
+  const deleteProduct = async (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
+    try {
+      await productsApi.deleteProduct(productId);
+    } catch {}
   };
 
-  const updateProductStock = (productId: string, newStock: number) => {
+  const updateProductStock = async (productId: string, newStock: number) => {
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, stockAvailable: Math.max(0, newStock) } : p));
+    try {
+      await productsApi.updateProduct(productId, { stockAvailable: Math.max(0, newStock) });
+    } catch {}
   };
 
-  const adjustProductStock = (productId: string, delta: number) => {
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, stockAvailable: Math.max(0, p.stockAvailable + delta) } : p));
-  };
-
-  const toggleFlashSale = (
-    productId: string, 
-    discountPercent?: number, 
-    isFlashSale?: boolean, 
-    flashSaleData?: Partial<Product>
-  ) => {
+  const adjustProductStock = async (productId: string, delta: number) => {
     setProducts(prev => prev.map(p => {
       if (p.id === productId) {
-        const nextSaleState = isFlashSale !== undefined ? isFlashSale : !p.isFlashSale;
-        const discount = discountPercent !== undefined ? discountPercent : (p.discountPercent || 20);
+        const nextStock = Math.max(0, (p.stockAvailable || 0) + delta);
+        return { ...p, stockAvailable: nextStock };
+      }
+      return p;
+    }));
+  };
+
+  const toggleFlashSale = (productId: string, discountPercent: number = 20, isFlashSale: boolean = true, flashSaleData?: Partial<Product>) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id === productId) {
         return {
           ...p,
-          isFlashSale: nextSaleState,
-          discountPercent: nextSaleState ? discount : 0,
+          isFlashSale,
+          discountPercent: isFlashSale ? discountPercent : undefined,
+          flashSaleEndsIn: isFlashSale ? '04:15:20' : undefined,
           ...flashSaleData
         };
       }
@@ -173,19 +181,28 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
     }));
   };
 
-  const bulkAddStock = (productId: string, rawKeys: string[]) => {
-    setProducts(prev => prev.map(p => {
-      if (p.id === productId) {
-        return {
-          ...p,
-          stockAvailable: p.stockAvailable + rawKeys.length
-        };
+  const bulkAddStock = async (productId: string, rawKeys: string[]) => {
+    const validKeys = rawKeys.filter(k => k.trim().length > 0);
+    if (validKeys.length === 0) return { success: false, message: 'Danh sách key trống' };
+
+    try {
+      const res = await productsApi.bulkAddStock(productId, validKeys);
+      if (res.success && res.data) {
+        setProducts(prev => prev.map(p => {
+          if (p.id === productId) {
+            return { ...p, stockAvailable: (p.stockAvailable || 0) + res.data!.addedCount };
+          }
+          return p;
+        }));
+        return { success: true, message: res.data.message };
       }
-      return p;
-    }));
+      return { success: false, message: res.error || 'Lỗi nhập kho' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Lỗi mạng' };
+    }
   };
 
-  // Game Actions
+  // Game actions
   const updateGame = (gameId: string, updatedGame: Partial<GameItem>) => {
     setGames(prev => prev.map(g => g.id === gameId ? { ...g, ...updatedGame } : g));
   };
@@ -196,13 +213,12 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
       name: newGame.name || 'Game Mới',
       category: newGame.category || 'Mobile',
       publisher: newGame.publisher || 'Nhà phát hành',
-      thumbnail: newGame.thumbnail || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400&auto=format&fit=crop&q=80',
-      banner: newGame.banner || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=1200&auto=format&fit=crop&q=80',
-      uidLabel: newGame.uidLabel || 'User ID',
-      uidPlaceholder: newGame.uidPlaceholder || 'Nhập UID nhân vật...',
-      tiers: newGame.tiers || [],
-      description: newGame.description || 'Dịch vụ nạp game giá sỉ...',
-      ...newGame
+      banner: newGame.banner || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
+      thumbnail: newGame.thumbnail || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=100&auto=format&fit=crop&q=80',
+      uidLabel: newGame.uidLabel || 'Nhập UID',
+      uidPlaceholder: newGame.uidPlaceholder || 'Ví dụ: 801928491',
+      description: newGame.description || 'Nạp game tự động',
+      tiers: newGame.tiers || []
     };
     setGames(prev => [game, ...prev]);
   };
@@ -223,10 +239,8 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateGameTier = (gameId: string, tierId: string, updatedTier: Partial<TopupTier>) => {
     setGames(prev => prev.map(g => {
       if (g.id === gameId) {
-        return {
-          ...g,
-          tiers: g.tiers.map(t => t.id === tierId ? { ...t, ...updatedTier } : t)
-        };
+        const nextTiers = g.tiers.map(t => t.id === tierId ? { ...t, ...updatedTier } : t);
+        return { ...g, tiers: nextTiers };
       }
       return g;
     }));
@@ -235,10 +249,7 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
   const deleteGameTier = (gameId: string, tierId: string) => {
     setGames(prev => prev.map(g => {
       if (g.id === gameId) {
-        return {
-          ...g,
-          tiers: g.tiers.filter(t => t.id !== tierId)
-        };
+        return { ...g, tiers: g.tiers.filter(t => t.id !== tierId) };
       }
       return g;
     }));
@@ -248,31 +259,27 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
     const factor = 1 + (percentDelta / 100);
     setGames(prev => prev.map(g => {
       if (g.id === gameId) {
-        return {
-          ...g,
-          tiers: g.tiers.map(t => ({
-            ...t,
-            retailPrice: Math.round(t.retailPrice * factor),
-            groupPrice: Math.round(t.groupPrice * factor)
-          }))
-        };
+        const nextTiers = g.tiers.map(t => ({
+          ...t,
+          retailPrice: Math.round(t.retailPrice * factor / 1000) * 1000,
+          groupPrice: t.groupPrice ? Math.round(t.groupPrice * factor / 1000) * 1000 : undefined
+        }));
+        return { ...g, tiers: nextTiers };
       }
       return g;
     }));
   };
 
-  // Category Actions
+  // Category actions
   const addCategory = (cat: Partial<CategoryItem>) => {
     const newCat: CategoryItem = {
-      id: `cat_${Date.now()}`,
-      slug: cat.slug || `cat_${Date.now()}`,
+      id: cat.id || `cat_${Date.now()}`,
       name: cat.name || 'Danh mục mới',
-      parentId: cat.parentId || null,
-      iconName: cat.iconName || 'Layers',
-      productCount: 0,
-      orderIndex: (categories.length + 1),
-      status: 'active',
-      ...cat
+      iconName: cat.iconName || 'Zap',
+      productCount: cat.productCount || 0,
+      orderIndex: cat.orderIndex || 1,
+      status: cat.status || 'active',
+      slug: cat.slug || 'danh-muc-moi'
     };
     setCategories(prev => [...prev, newCat]);
   };
@@ -299,6 +306,8 @@ export const CatalogProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSortBy,
         selectedPlatform,
         setSelectedPlatform,
+        isLoading,
+        fetchCatalog,
         addNewProduct,
         updateProduct,
         deleteProduct,

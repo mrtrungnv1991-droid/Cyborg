@@ -42,48 +42,49 @@ export interface FanMenuItem {
 interface FanMenuModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: UserProfile;
-  activeOrdersCount: number;
-  onOpenWallet: () => void;
-  onOpenDepositHub: () => void;
-  onOpenVault: () => void;
-  onOpenCreatePool: () => void;
-  onCurrencyToggle: () => void;
-  onOpenEscrowGuide: () => void;
-  onOpenTopup: () => void;
-  onOpenTickets: () => void;
-  onOpenSuppliers: () => void;
-  onOpenAdmin: () => void;
-  onOpenTelcoCard: () => void;
-  onOpenLuckyWheel: () => void;
-  onOpenOrderLookup: () => void;
-  onOpenAffiliate: () => void;
-  onOpenLedger: () => void;
-  onOpenKeyTools: () => void;
+  user?: UserProfile;
+  activeOrdersCount?: number;
+  onOpenWallet?: () => void;
+  onOpenDepositHub?: () => void;
+  onOpenVault?: () => void;
+  onOpenCreatePool?: () => void;
+  onCurrencyToggle?: () => void;
+  onOpenEscrowGuide?: () => void;
+  onOpenTopup?: () => void;
+  onOpenTickets?: () => void;
+  onOpenSuppliers?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenTelcoCard?: () => void;
+  onOpenLuckyWheel?: () => void;
+  onOpenOrderLookup?: () => void;
+  onOpenAffiliate?: () => void;
+  onOpenLedger?: () => void;
+  onOpenKeyTools?: () => void;
 }
 
 export const FanMenuModal: React.FC<FanMenuModalProps> = ({
   isOpen,
   onClose,
   user,
-  activeOrdersCount,
-  onOpenWallet,
-  onOpenDepositHub,
-  onOpenVault,
-  onOpenCreatePool,
-  onCurrencyToggle,
-  onOpenEscrowGuide,
-  onOpenTopup,
-  onOpenTickets,
-  onOpenSuppliers,
-  onOpenAdmin,
-  onOpenTelcoCard,
-  onOpenLuckyWheel,
-  onOpenOrderLookup,
-  onOpenAffiliate,
-  onOpenLedger,
-  onOpenKeyTools
+  activeOrdersCount = 0,
+  onOpenWallet = () => {},
+  onOpenDepositHub = () => {},
+  onOpenVault = () => {},
+  onOpenCreatePool = () => {},
+  onCurrencyToggle = () => {},
+  onOpenEscrowGuide = () => {},
+  onOpenTopup = () => {},
+  onOpenTickets = () => {},
+  onOpenSuppliers = () => {},
+  onOpenAdmin = () => {},
+  onOpenTelcoCard = () => {},
+  onOpenLuckyWheel = () => {},
+  onOpenOrderLookup = () => {},
+  onOpenAffiliate = () => {},
+  onOpenLedger = () => {},
+  onOpenKeyTools = () => {}
 }) => {
+  const activeCurrency = user?.currency || 'VND';
   const [selectedTab, setSelectedTab] = useState<'all' | 'finance' | 'gaming' | 'tools' | 'admin'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewStyle, setViewStyle] = useState<'fan' | 'grid'>('fan');
@@ -187,7 +188,7 @@ export const FanMenuModal: React.FC<FanMenuModalProps> = ({
       subtitle: 'Xem số dư khả dụng, rút tiền, đổi mật khẩu',
       category: 'finance',
       icon: <Wallet className="w-5 h-5" />,
-      badge: user.currency,
+      badge: activeCurrency,
       badgeColor: 'bg-emerald-950 border border-emerald-500/40 text-emerald-300',
       color: 'from-emerald-500 to-green-700',
       action: () => { onClose(); onOpenWallet(); }
@@ -255,10 +256,10 @@ export const FanMenuModal: React.FC<FanMenuModalProps> = ({
     {
       id: 'currency',
       title: 'Đổi Đơn Vị Tiền Tệ',
-      subtitle: `Hiện đang dùng: ${user.currency} (Nhấp để đổi VND / USD / USDT)`,
+      subtitle: `Hiện đang dùng: ${activeCurrency} (Nhấp để đổi VND / USD / USDT)`,
       category: 'finance',
       icon: <Globe className="w-5 h-5" />,
-      badge: user.currency,
+      badge: activeCurrency,
       badgeColor: 'bg-slate-800 text-cyan-300',
       color: 'from-slate-700 to-slate-900',
       action: () => { onCurrencyToggle(); }

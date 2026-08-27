@@ -967,6 +967,8 @@ function AppContent() {
         <FanMenuModal
           isOpen={true}
           onClose={closeModal}
+          user={currentUser}
+          activeOrdersCount={orders.length}
           onOpenWallet={() => openModal('wallet')}
           onOpenDepositHub={() => openModal('depositHub')}
           onOpenVault={() => openModal('vault')}
@@ -977,6 +979,12 @@ function AppContent() {
           onOpenAffiliate={() => openModal('affiliate')}
           onOpenTickets={() => openModal('tickets')}
           onOpenEscrowGuide={() => openModal('escrowGuide')}
+          onCurrencyToggle={() => openModal('aiConfig')}
+          onOpenSuppliers={() => openModal('sellerSupplier')}
+          onOpenAdmin={() => openModal('admin')}
+          onOpenOrderLookup={() => openModal('orderLookup')}
+          onOpenLedger={() => openModal('txLedger')}
+          onOpenKeyTools={() => openModal('keyTools')}
         />
       )}
 
