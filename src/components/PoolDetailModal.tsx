@@ -30,6 +30,7 @@ interface PoolDetailModalProps {
   onSimulateAddParticipant: (poolId: string) => void;
   onOpenWallet: () => void;
   onRateProduct?: (productId: string, rating: number, comment?: string) => void;
+  onInstantBuy?: (product: Product) => void;
 }
 
 export const PoolDetailModal: React.FC<PoolDetailModalProps> = ({
@@ -41,7 +42,8 @@ export const PoolDetailModal: React.FC<PoolDetailModalProps> = ({
   onConfirmJoin,
   onSimulateAddParticipant,
   onOpenWallet,
-  onRateProduct
+  onRateProduct,
+  onInstantBuy
 }) => {
   const [activeTab, setActiveTab] = useState<'slots' | 'reviews'>('slots');
   const [selectedSlotCount, setSelectedSlotCount] = useState(1);
@@ -586,7 +588,21 @@ export const PoolDetailModal: React.FC<PoolDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            {onInstantBuy && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onInstantBuy(product);
+                }}
+                className="py-3 px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 hover:text-amber-200 font-mono font-bold text-xs border border-amber-500/40 hover:border-amber-400 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                title="Mua lẻ nhận key ngay lập tức không cần đợi đủ slot"
+              >
+                <span>⚡ Mua Lẻ Ngay ({formatCurrency(product.retailPrice, user.currency)})</span>
+              </button>
+            )}
+
             {!hasEnoughBalance ? (
               <button
                 onClick={onOpenWallet}

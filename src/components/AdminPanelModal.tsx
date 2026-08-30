@@ -19,7 +19,8 @@ import {
   Clock, 
   FileText, 
   TrendingUp, 
-  Lock 
+  Lock,
+  Layout
 } from 'lucide-react';
 import { 
   Product, 
@@ -60,9 +61,11 @@ import { AdminCTVResellerTab } from './admin/AdminCTVResellerTab';
 import { AdminGiftUpExchangeTab } from './admin/AdminGiftUpExchangeTab';
 import { AdminSettingsTab } from './admin/AdminSettingsTab';
 import { AdminAuditSecurityTab } from './admin/AdminAuditSecurityTab';
+import { AdminHeroLayoutTab } from './admin/AdminHeroLayoutTab';
 
 export type AdminTabType =
   | 'dashboard'
+  | 'hero_layout'
   | 'products'
   | 'categories'
   | 'manual_fulfillment'
@@ -194,6 +197,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   const navTabs: { id: AdminTabType; label: string; icon: React.ComponentType<{ className?: string }>; badge?: string | number }[] = [
     { id: 'dashboard', label: 'Bàn Điều Khiển (Telemetry)', icon: TrendingUp },
+    { id: 'hero_layout', label: 'Tùy Biến Hero & Tỷ Lệ Web', icon: Layout, badge: 'Giao diện' },
     { id: 'products', label: 'Sản Phẩm & Kho Key', icon: ShoppingBag, badge: products.length },
     { id: 'categories', label: 'Danh Mục & Phân Cấp', icon: Layers, badge: categories?.length },
     { id: 'manual_fulfillment', label: 'Đơn Thủ Công (Queue)', icon: Tag, badge: manualOrders?.filter(o => o.status === 'pending' || o.status === 'processing').length },
@@ -297,6 +301,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 totalEscrowLocked={totalEscrowLocked}
                 totalUserBalance={totalUserBalance}
                 onNavigateToTab={setActiveTab}
+              />
+            )}
+
+            {activeTab === 'hero_layout' && (
+              <AdminHeroLayoutTab
+                systemConfig={systemConfig}
+                onUpdateSystemConfig={onUpdateSystemConfig}
               />
             )}
 

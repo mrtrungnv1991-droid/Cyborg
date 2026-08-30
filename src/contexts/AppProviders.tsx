@@ -5,6 +5,7 @@ import { WalletProvider } from './WalletContext';
 import { CatalogProvider } from './CatalogContext';
 import { OrdersProvider } from './OrdersContext';
 import { AdminProvider } from './AdminContext';
+import { CartProvider } from './CartContext';
 
 export const AppProviders: React.FC<{ children: ReactNode }> = ({ children }) => {
   return (
@@ -14,7 +15,9 @@ export const AppProviders: React.FC<{ children: ReactNode }> = ({ children }) =>
           <CatalogProvider>
             <OrdersProvider>
               <AdminProvider>
-                {children}
+                <CartProvider>
+                  {children}
+                </CartProvider>
               </AdminProvider>
             </OrdersProvider>
           </CatalogProvider>

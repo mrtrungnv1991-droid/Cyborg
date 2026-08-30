@@ -14,9 +14,11 @@ import {
   Send,
   HelpCircle,
   Sparkles,
-  Layout
+  Layout,
+  Maximize2
 } from 'lucide-react';
 import { SystemConfig, Currency } from '../../types';
+import { AdminHeroLayoutTab } from './AdminHeroLayoutTab';
 
 interface AdminSettingsTabProps {
   systemConfig?: SystemConfig;
@@ -35,7 +37,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
   currentLanguage = 'vi',
   onLanguageChange
 }) => {
-  const [subTab, setSubTab] = useState<'general' | 'theme' | 'currency_lang' | 'smtp' | 'telegram_bot'>('general');
+  const [subTab, setSubTab] = useState<'general' | 'theme' | 'currency_lang' | 'smtp' | 'telegram_bot' | 'hero_layout'>('general');
   const [formData, setFormData] = useState<SystemConfig>(systemConfig || ({} as SystemConfig));
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [testingMail, setTestingMail] = useState(false);
@@ -178,6 +180,19 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
         >
           <Bell className="w-3.5 h-3.5" />
           <span>5. Bot Thông Báo Telegram</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab('hero_layout')}
+          className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer text-xs ${
+            subTab === 'hero_layout'
+              ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.4)]'
+              : 'bg-slate-900 text-cyan-400 hover:text-white border border-cyan-500/30'
+          }`}
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+          <span>6. Tỷ Lệ Khung Web & Hero CMS</span>
         </button>
       </div>
 
@@ -521,6 +536,21 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
               </label>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* SUBTAB 6: HERO & LAYOUT PROPORTIONS */}
+      {subTab === 'hero_layout' && (
+        <div className="pt-2">
+          <AdminHeroLayoutTab
+            systemConfig={formData}
+            onUpdateSystemConfig={(newConfig) => {
+              setFormData(prev => ({ ...prev, ...newConfig }));
+              onUpdateSystemConfig(newConfig);
+              setSaveNotice('Đã cập nhật tỷ lệ khung web & cấu hình Hero!');
+              setTimeout(() => setSaveNotice(null), 3000);
+            }}
+          />
         </div>
       )}
     </form>

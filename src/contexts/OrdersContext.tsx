@@ -33,6 +33,7 @@ interface OrdersContextType {
   fetchOrders: () => Promise<void>;
   
   // Actions
+  addOrder: (order: UserOrder) => void;
   joinPool: (poolId: string, product: Product) => Promise<{ success: boolean; message: string }>;
   buyInstantSingle: (product: Product, quantity?: number) => Promise<{ success: boolean; message: string; deliveredKey?: string }>;
   createTopupOrder: (game: GameItem, tier: TopupTier, uid: string, zoneId?: string, characterName?: string, isGroup?: boolean) => Promise<{ success: boolean; message: string }>;
@@ -61,10 +62,25 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const { addTransaction, fetchWalletData } = useWallet();
   const { updateProduct } = useCatalog();
 
-  const [orders, setOrders] = useState<UserOrder[]>(INITIAL_ORDERS);
+  const [orders, setOrders] = useState<UserOrder[]>(() => {
+    try {
+      const saved = localStorage.getItem('cyberpool_orders_history');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return INITIAL_ORDERS;
+  });
   const [manualOrders, setManualOrders] = useState<ManualOrder[]>(INITIAL_MANUAL_ORDERS);
   const [tickets, setTickets] = useState<SupportTicket[]>(INITIAL_TICKETS);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Sync to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('cyberpool_orders_history', JSON.stringify(orders));
+    } catch {}
+  }, [orders]);
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
@@ -107,7 +123,15 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const res = await ordersApi.getUserOrders();
       if (res.success && res.data?.orders) {
         if (res.data.orders.length > 0) {
-          setOrders(res.data.orders);
+          setOrders(prev => {
+            const combined = [...res.data!.orders];
+            prev.forEach(localOrd => {
+              if (!combined.some(c => c.id === localOrd.id || (c.txId && c.txId === localOrd.txId))) {
+                combined.unshift(localOrd);
+              }
+            });
+            return combined;
+          });
         }
       }
     } catch {
@@ -120,6 +144,17 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  // 0. Append Order Directly
+  const addOrder = (order: UserOrder) => {
+    setOrders(prev => {
+      const updated = [order, ...prev];
+      try {
+        localStorage.setItem('cyberpool_orders_history', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
 
   // 1. Instant Buy (Single Key) via Atomic Server Route
   const buyInstantSingle = async (product: Product, quantity: number = 1): Promise<{ success: boolean; message: string; deliveredKey?: string }> => {
@@ -411,6 +446,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         spinRecords,
         isLoading,
         fetchOrders,
+        addOrder,
         joinPool,
         buyInstantSingle,
         createTopupOrder,

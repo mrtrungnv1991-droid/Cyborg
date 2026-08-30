@@ -3,6 +3,7 @@ import { Product, GameItem } from '../types';
 
 export type ModalType = 
   | 'poolDetail'
+  | 'instantBuy'
   | 'vault'
   | 'createPool'
   | 'wallet'

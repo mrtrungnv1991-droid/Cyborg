@@ -39,9 +39,28 @@ const INITIAL_BOOT_USER: UserProfile = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_BOOT_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    try {
+      const saved = localStorage.getItem('cyberpool_current_user');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // fallback
+    }
+    return INITIAL_BOOT_USER;
+  });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Sync to localStorage whenever currentUser changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('cyberpool_current_user', JSON.stringify(currentUser));
+    } catch {
+      // ignore storage errors
+    }
+  }, [currentUser]);
 
   // Sync server profile to client state
   const mapServerUserToProfile = (serverUser: AuthUser): UserProfile => {
@@ -57,10 +76,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       name: serverUser.name,
       email: serverUser.email,
       avatar: serverUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-      walletBalance: serverUser.walletBalance ?? 0,
-      escrowLocked: serverUser.escrowLocked ?? 0,
-      currency: 'VND',
-      language: 'vi',
+      walletBalance: serverUser.walletBalance ?? currentUser.walletBalance ?? 0,
+      escrowLocked: serverUser.escrowLocked ?? currentUser.escrowLocked ?? 0,
+      currency: currentUser.currency || 'VND',
+      language: currentUser.language || 'vi',
       reputationScore: 99.8,
       role: clientRole,
       affiliateCode: `AFF-${serverUser.id.slice(-6).toUpperCase()}`,
@@ -73,7 +92,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const res = await authApi.getMe();
       if (res.success && res.data?.user) {
-        setCurrentUser(mapServerUserToProfile(res.data.user));
+        setCurrentUser(prev => {
+          const mapped = mapServerUserToProfile(res.data.user);
+          // Preserve client walletBalance if modified locally
+          return {
+            ...mapped,
+            walletBalance: prev.walletBalance,
+            escrowLocked: prev.escrowLocked,
+            currency: prev.currency,
+            language: prev.language
+          };
+        });
         setIsAuthenticated(true);
       }
     } catch {
@@ -91,7 +120,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const res = await authApi.login(email, password);
       if (res.success && res.data) {
         api.setToken(res.data.token);
-        setCurrentUser(mapServerUserToProfile(res.data.user));
+        const mapped = mapServerUserToProfile(res.data.user);
+        setCurrentUser(mapped);
+        try {
+          localStorage.setItem('cyberpool_current_user', JSON.stringify(mapped));
+        } catch {}
         setIsAuthenticated(true);
         setIsLoading(false);
         return { success: true };
@@ -110,7 +143,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const res = await authApi.register(data);
       if (res.success && res.data) {
         api.setToken(res.data.token);
-        setCurrentUser(mapServerUserToProfile(res.data.user));
+        const mapped = mapServerUserToProfile(res.data.user);
+        setCurrentUser(mapped);
+        try {
+          localStorage.setItem('cyberpool_current_user', JSON.stringify(mapped));
+        } catch {}
         setIsAuthenticated(true);
         setIsLoading(false);
         return { success: true };
@@ -130,32 +167,61 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const updateUserRole = async (role: UserProfile['role']) => {
-    setCurrentUser(prev => ({ ...prev, role }));
+    setCurrentUser(prev => {
+      const updated = { ...prev, role };
+      try {
+        localStorage.setItem('cyberpool_current_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const updateUserBalance = (delta: number) => {
-    setCurrentUser(prev => ({
-      ...prev,
-      walletBalance: Math.max(0, prev.walletBalance + delta)
-    }));
-    // Also trigger server sync in background
-    refreshUserProfile();
+    setCurrentUser(prev => {
+      const newBal = Math.max(0, (prev.walletBalance || 0) + delta);
+      const updated = {
+        ...prev,
+        walletBalance: newBal
+      };
+      try {
+        localStorage.setItem('cyberpool_current_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const updateEscrowLocked = (delta: number) => {
-    setCurrentUser(prev => ({
-      ...prev,
-      escrowLocked: Math.max(0, prev.escrowLocked + delta)
-    }));
-    refreshUserProfile();
+    setCurrentUser(prev => {
+      const newEscrow = Math.max(0, (prev.escrowLocked || 0) + delta);
+      const updated = {
+        ...prev,
+        escrowLocked: newEscrow
+      };
+      try {
+        localStorage.setItem('cyberpool_current_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const updateLanguage = (language: LanguageCode) => {
-    setCurrentUser(prev => ({ ...prev, language }));
+    setCurrentUser(prev => {
+      const updated = { ...prev, language };
+      try {
+        localStorage.setItem('cyberpool_current_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const updateCurrency = (currency: CurrencyCode) => {
-    setCurrentUser(prev => ({ ...prev, currency }));
+    setCurrentUser(prev => {
+      const updated = { ...prev, currency };
+      try {
+        localStorage.setItem('cyberpool_current_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   return (

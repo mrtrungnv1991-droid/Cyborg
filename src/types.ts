@@ -1,6 +1,55 @@
-export type ProductCategory = 'all' | 'ai_tools' | 'gaming' | 'topup_games' | 'streaming' | 'software' | 'giftup_cards' | 'vpn';
+export type ProductCategory = 
+  | 'all' 
+  | 'accounts' 
+  | 'key_games' 
+  | 'key_apps' 
+  | 'topup_games' 
+  | 'ai_tools' 
+  | 'gaming' 
+  | 'streaming' 
+  | 'software' 
+  | 'giftup_cards' 
+  | 'vpn'
+  | 'entertainment'
+  | 'vpn_security'
+  | 'education';
+
+export type MainNavModule = 'all' | 'accounts' | 'key_games' | 'key_apps' | 'topup_games' | 'group_pools' | 'flash_sales';
+
+export interface CartItem {
+  id: string;
+  product: Product;
+  quantity: number;
+  selected: boolean;
+  itemType: 'account' | 'key_game' | 'key_app' | 'giftup_card' | 'software' | 'topup' | 'other';
+  addedAt: string;
+}
 
 export type DeliveryType = 'instant_key' | 'giftup_card' | 'account_invite' | 'activation_token' | 'direct_topup';
+
+export type ProductPlatform = 
+  | 'Steam' 
+  | 'OpenAI' 
+  | 'Midjourney' 
+  | 'Netflix' 
+  | 'Adobe' 
+  | 'GiftUp' 
+  | 'Spotify' 
+  | 'Xbox' 
+  | 'Anthropic' 
+  | 'NordVPN' 
+  | 'Garena' 
+  | 'Hoyoverse' 
+  | 'HoYoverse'
+  | 'Riot' 
+  | 'Roblox'
+  | 'YouTube'
+  | 'Canva'
+  | 'EA Sports'
+  | 'Windows'
+  | 'Office'
+  | 'Tonec IDM'
+  | string;
 
 export interface SellerInfo {
   id: string;
@@ -67,7 +116,7 @@ export interface Product {
   subtitle: string;
   category: ProductCategory;
   bannerImg: string;
-  platform: 'Steam' | 'OpenAI' | 'Midjourney' | 'Netflix' | 'Adobe' | 'GiftUp' | 'Spotify' | 'Xbox' | 'Anthropic' | 'NordVPN' | 'Garena' | 'Hoyoverse' | 'Riot' | 'Roblox';
+  platform: ProductPlatform;
   retailPrice: number;
   groupPrice: number;
   minSlots: number;
@@ -85,7 +134,7 @@ export interface Product {
   stockAvailable: number;
   tags: string[];
   fulfillmentType?: 'automatic' | 'manual';
-  productType?: 'account' | 'key_game' | 'gift_card' | 'topup_manual';
+  productType?: 'account' | 'key_game' | 'key_app' | 'gift_card' | 'topup' | 'topup_manual' | 'software' | 'other';
   subcategoryId?: string;
   discountPercent?: number; // Giảm giá riêng cho từng sản phẩm (%)
   originalPrice?: number;
@@ -739,6 +788,60 @@ export interface SystemConfig {
     bannerImage?: string;
     holidayEffect?: string;
   };
+
+  // Hero & Web Layout Proportion Configuration
+  heroConfig?: HeroCustomConfig;
+  uiLayoutConfig?: UiLayoutConfig;
+}
+
+export interface LaunchpadButtonConfig {
+  id: string;
+  key: string;
+  label: string;
+  icon: string;
+  colorScheme: 'cyan' | 'blue' | 'emerald' | 'purple' | 'amber' | 'indigo' | 'slate';
+  active: boolean;
+}
+
+export interface HeroCustomConfig {
+  badgeText: string;
+  badgeActive: boolean;
+  badgeColor: 'cyan' | 'emerald' | 'purple' | 'amber' | 'red';
+  mainHeadingLine1: string;
+  mainHeadingLine2: string;
+  mainHeadingGradient: 'cyan_blue' | 'gold_amber' | 'purple_rose' | 'emerald_teal' | 'fire_red';
+  subheading: string;
+  containerMaxWidth: 'max-w-6xl' | 'max-w-7xl' | 'max-w-[1440px]' | 'max-w-[1600px]' | 'max-w-full';
+  contentAlignment: 'left' | 'center' | 'balanced_split';
+  verticalPadding: 'compact' | 'standard' | 'generous';
+  heroBackground: 'cyber_grid' | 'neon_glow' | 'aurora' | 'minimal_dark';
+  showTrustPods: boolean;
+  trustPod1: {
+    title: string;
+    value: string;
+    sub: string;
+    icon: 'zap' | 'shield' | 'clock' | 'sparkles';
+    color: 'cyan' | 'emerald' | 'amber' | 'purple';
+    active: boolean;
+  };
+  trustPod2: {
+    title: string;
+    value: string;
+    sub: string;
+    icon: 'shield_check' | 'lock' | 'award' | 'star';
+    color: 'emerald' | 'cyan' | 'amber' | 'purple';
+    active: boolean;
+  };
+  showLaunchpad: boolean;
+  launchpadLayout: 'wrap_grid' | 'scrollable_row';
+  launchpadButtons: LaunchpadButtonConfig[];
+}
+
+export interface UiLayoutConfig {
+  siteContainerWidth: 'max-w-7xl' | 'max-w-[1440px]' | 'max-w-[1600px]' | 'max-w-6xl' | 'max-w-full';
+  cardBorderRadius: 'rounded-lg' | 'rounded-xl' | 'rounded-2xl';
+  enableCyberGrid: boolean;
+  enableGlowEffects: boolean;
 }
 
 export type SystemConfiguration = SystemConfig;

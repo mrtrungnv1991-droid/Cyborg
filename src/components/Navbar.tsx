@@ -25,11 +25,13 @@ import {
   SlidersHorizontal,
   CheckCircle2,
   X,
-  Coins
+  Coins,
+  ShoppingCart
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { UserProfile, LanguageCode, CurrencyCode } from '../types';
 import { getTranslation, SUPPORTED_LANGUAGES, SUPPORTED_CURRENCIES } from '../utils/i18n';
+import { useCart } from '../contexts/CartContext';
 
 interface NavbarProps {
   user: UserProfile;
@@ -55,6 +57,7 @@ interface NavbarProps {
   onOpenLedger: () => void;
   onOpenKeyTools: () => void;
   onOpenFanMenu: () => void;
+  containerMaxWidth?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -80,7 +83,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAffiliate,
   onOpenLedger,
   onOpenKeyTools,
-  onOpenFanMenu
+  onOpenFanMenu,
+  containerMaxWidth = 'max-w-7xl'
 }) => {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isQuickLangOpen, setIsQuickLangOpen] = useState(false);
@@ -90,6 +94,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const t = (key: string) => getTranslation(key, currentLanguage);
   const activeLangObj = SUPPORTED_LANGUAGES.find(l => l.code === currentLanguage) || SUPPORTED_LANGUAGES[0];
   const activeCurrObj = SUPPORTED_CURRENCIES.find(c => c.code === user.currency) || SUPPORTED_CURRENCIES[0];
+  const { totalCount: cartTotalCount, setIsCartOpen } = useCart();
 
   // Close menus when clicked outside or on Escape
   useEffect(() => {
@@ -123,7 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 w-full border-b border-cyan-500/20 bg-[#07090e]/95 backdrop-blur-md">
       {/* Main Bar */}
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1 sm:gap-2">
+      <div className={`w-full ${containerMaxWidth || 'max-w-7xl'} mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1 sm:gap-2`}>
         {/* Brand / Logo */}
         <div className="flex items-center gap-1.5 sm:gap-3 cursor-pointer select-none shrink-0" onClick={onLogoClick}>
           <div className="relative flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 bg-gradient-to-br from-cyan-500 to-blue-600 clip-chamfer shadow-[0_0_20px_rgba(6,182,212,0.4)]">
@@ -294,6 +299,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             {activeOrdersCount > 0 && (
               <span className="flex items-center justify-center min-w-3.5 h-3.5 px-0.5 rounded-full bg-cyan-500 text-black text-[8px] sm:text-[9px] font-bold">
                 {activeOrdersCount}
+              </span>
+            )}
+          </button>
+
+          {/* Shopping Cart Button */}
+          <button
+            onClick={() => setIsCartOpen(true)}
+            className={`relative flex items-center gap-1 p-1 sm:px-2.5 sm:py-1.5 text-[10px] sm:text-xs font-medium font-mono rounded transition-all active:scale-95 cursor-pointer ${
+              cartTotalCount > 0
+                ? 'text-cyan-300 bg-cyan-950/80 border border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.3)] animate-pulse'
+                : 'text-slate-300 bg-slate-900/90 hover:bg-slate-800 border border-slate-700'
+            }`}
+            title="Giỏ hàng mua sắm"
+          >
+            <ShoppingCart className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Giỏ Hàng</span>
+            {cartTotalCount > 0 && (
+              <span className="flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold">
+                {cartTotalCount}
               </span>
             )}
           </button>

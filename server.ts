@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
 // API Routers
@@ -15,9 +14,6 @@ import { adminRouter } from './server/routes/api/v1/adminRoutes';
 import { notificationRouter } from './server/routes/api/v1/notificationRoutes';
 import { affiliateRouter } from './server/routes/api/v1/affiliateRoutes';
 import { webhookRouter } from './server/routes/api/v1/webhookRoutes';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();

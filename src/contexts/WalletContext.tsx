@@ -73,11 +73,26 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined);
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { refreshUserProfile } = useAuth();
 
-  const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS_FALLBACK);
+  const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('cyberpool_wallet_txs');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return INITIAL_TRANSACTIONS_FALLBACK;
+  });
   const [telcoCards, setTelcoCards] = useState<TelcoCardSubmission[]>([]);
   const [topupInvoices, setTopupInvoices] = useState<TopupInvoice[]>(INITIAL_INVOICES_FALLBACK);
   const [withdrawals, setWithdrawals] = useState<CTVWithdrawal[]>(INITIAL_CTV_WITHDRAWALS);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Sync to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('cyberpool_wallet_txs', JSON.stringify(transactions));
+    } catch {}
+  }, [transactions]);
 
   const fetchWalletData = useCallback(async () => {
     setIsLoading(true);
@@ -85,7 +100,16 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const res = await walletApi.getLedger();
       if (res.success && res.data) {
         if (res.data.transactions && res.data.transactions.length > 0) {
-          setTransactions(res.data.transactions);
+          setTransactions(prev => {
+            const combined = [...res.data!.transactions];
+            // Merge local transactions that aren't on server yet
+            prev.forEach(localTx => {
+              if (!combined.some(c => c.id === localTx.id || (c.txCode && c.txCode === localTx.txCode))) {
+                combined.unshift(localTx);
+              }
+            });
+            return combined;
+          });
         }
       }
     } catch {
@@ -105,7 +129,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       id: `tx-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       createdAt: 'Vừa xong'
     };
-    setTransactions(prev => [newTx, ...prev]);
+    setTransactions(prev => {
+      const updated = [newTx, ...prev];
+      try {
+        localStorage.setItem('cyberpool_wallet_txs', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     return newTx;
   };
 

@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Users, 
   Clock, 
   Flame, 
   Sparkles, 
   ArrowRight,
-  Gift
+  Gift,
+  ShoppingCart,
+  Check
 } from 'lucide-react';
 import { Product, GroupPool } from '../types';
 import { formatCurrency } from '../utils/formatters';
+import { useCart } from '../contexts/CartContext';
 
 interface ProductCardProps {
   product: Product;
@@ -29,6 +32,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onCreatePool,
   onCreateNewPoolForProduct
 }) => {
+  const { addToCart } = useCart();
+  const [justAdded, setJustAdded] = useState(false);
   const activePool = (product.activePools && product.activePools.length > 0)
     ? (product.activePools.find(p => p.status === 'filling') || product.activePools[0])
     : undefined;
@@ -38,6 +43,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const targetSlots = activePool ? activePool.targetSlots : product.minSlots;
   const percentFilled = Math.min(100, Math.round((filledSlots / targetSlots) * 100));
   const remainingSlots = targetSlots - filledSlots;
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    addToCart(product, 1);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1500);
+  };
 
   const handleJoinClick = () => {
     if (onJoinPool) {
@@ -183,11 +195,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-1 sm:gap-2 pt-0.5">
+        <div className="flex items-center gap-1 sm:gap-1.5 pt-0.5">
           {/* Group Buy Button (Main) */}
           <button
             onClick={handleJoinClick}
-            className="flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1.5 sm:px-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)] active:scale-95 cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)] active:scale-95 cursor-pointer"
           >
             <span>Gom Đơn</span>
             <ArrowRight className="w-3 h-3 hidden sm:inline" />
@@ -196,9 +208,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           {/* Instant Buy Retail Button */}
           <button
             onClick={handleInstantBuyClick}
-            className="flex items-center justify-center gap-0.5 py-1.5 sm:py-2 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-mono text-[9px] sm:text-xs border border-slate-700 transition-all active:scale-95 cursor-pointer truncate"
+            className="flex-1 flex items-center justify-center gap-0.5 py-1.5 sm:py-2 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-mono text-[9px] sm:text-xs border border-slate-700 transition-all active:scale-95 cursor-pointer truncate"
           >
             <span>Mua Lẻ</span>
+          </button>
+
+          {/* Add to Cart Quick Button */}
+          <button
+            onClick={handleAddToCart}
+            className={`p-1.5 sm:p-2 rounded-lg border transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center ${
+              justAdded
+                ? 'bg-emerald-500 text-black border-emerald-400'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 border-slate-700 hover:border-cyan-500/50'
+            }`}
+            title="Thêm vào giỏ hàng"
+          >
+            {justAdded ? <Check className="w-3.5 h-3.5" /> : <ShoppingCart className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
